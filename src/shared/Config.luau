@@ -2,13 +2,13 @@
 
 local Config = {
 	-- Base
-	MaxSlots = 12,
-	MaxPlayers = 5,
-	IncomeTickRate = 1,
+	MaxSlots = 12, -- max brainrot slots per base
+	MaxPlayers = 5, -- max players per server
+	IncomeTickRate = 1, -- seconds between each cash accumulate per brainrot in slot
 
 	-- Spawner
-	SpawnInterval = 5,
-	MaxSpawns = 8,
+	SpawnInterval = 5, -- seconds between new brainrot spawns in area
+	MaxSpawns = 8, -- max brainrot spawns
 
 	-- TODO: Slap
 	-- SlapCooldown = 1,
