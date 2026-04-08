@@ -2,25 +2,27 @@
 
 local Config = {
 	-- Base
-	MaxSlots = 12, -- max brainrot slots per base
-	MaxPlayers = 5, -- max players per server
-	IncomeTickRate = 1, -- seconds between each cash accumulate per brainrot in slot
+	MaxSlots = 12,
+	MaxPlayers = 5,
+	IncomeTickRate = 1,
 
 	-- Spawner
-	SpawnInterval = 5, -- seconds between new brainrot spawns in area
-	MaxSpawns = 8, -- max brainrot spawns
+	SpawnInterval = 5,
+	MaxSpawns = 8,
 
-	-- TODO: Slap
-	-- SlapCooldown = 1,
-	-- SlapForce = 50,
-	-- SlapRange = 10,
+	-- Despawn times per rarity (seconds, nil = never despawns)
+	DespawnTimes = {
+		Common = 30,
+		Rare = 45,
+		Epic = 60,
+		Legendary = 90,
+		Mythic = nil,
+	},
 
-	-- TODO: Cannon
-	-- CannonTiers = {
-	--     { power = 50, cost = 0 },
-	--     { power = 100, cost = 500 },
-	--     { power = 200, cost = 2000 },
-	-- }
+	-- Pickup
+	PickupHoldDuration = 0.5,  -- seconds to hold E
+	PickupRange = 8,            -- studs away to see prompt
+	CarryOffset = Vector3.new(0, 3, 0),  -- height above player head
 }
 
 return Config
