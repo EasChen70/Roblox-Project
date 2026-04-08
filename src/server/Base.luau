@@ -7,10 +7,9 @@ local Remotes = require(game.ReplicatedStorage.Remotes)
 local Base = {}
 
 local bases = game.Workspace.Map.Bases
-local claimedBases = {} -- { [player] = baseModel }
+local claimedBases = {}
 
 function Base.claimBase(player)
-	-- Find first unclaimed base
 	for _, base in bases:GetChildren() do
 		local taken = false
 		for _, claimedBase in claimedBases do
@@ -39,7 +38,15 @@ function Base.releaseBase(player)
 	end
 end
 
--- Auto-assign on join, release on leave
+function Base.getOwner(baseModel)
+	for player, base in claimedBases do
+		if base == baseModel then
+			return player
+		end
+	end
+	return nil
+end
+
 Players.PlayerAdded:Connect(function(player)
 	Base.claimBase(player)
 end)
