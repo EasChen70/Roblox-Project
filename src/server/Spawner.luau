@@ -48,6 +48,37 @@ local function countSpawned()
 	return count
 end
 
+-- Starts or resumes a despawn timer on a brainrot
+function Spawner.startDespawnTimer(clone)
+	local remaining = clone:GetAttribute("DespawnRemaining")
+	if not remaining then return end -- Mythic, no timer
+
+	clone:SetAttribute("DespawnPaused", false)
+	local startTime = tick()
+
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			-- Stop loop if grabbed, destroyed, or placed on base
+			if not clone.Parent then return end
+			if clone:GetAttribute("DespawnPaused") then
+				-- Save how much time is left
+				local elapsed = tick() - startTime
+				clone:SetAttribute("DespawnRemaining", math.max(0, remaining - elapsed))
+				return
+			end
+
+			local elapsed = tick() - startTime
+			if elapsed >= remaining then
+				Spawner.clearPoint(clone)
+				clone:Destroy()
+				print(clone:GetAttribute("Name"), "despawned")
+				return
+			end
+		end
+	end)
+end
+
 function Spawner.spawnOne()
 	if countSpawned() >= Config.MaxSpawns then return end
 
@@ -66,9 +97,16 @@ function Spawner.spawnOne()
 	clone:SetAttribute("Rarity", brainrotData.rarity)
 	clone:SetAttribute("IncomePerSec", brainrotData.incomePerSec)
 	clone:SetAttribute("Name", brainrotData.name)
+
+	-- Set despawn timer attribute
+	local despawnTime = Config.DespawnTimes[brainrotData.rarity]
+	if despawnTime then
+		clone:SetAttribute("DespawnRemaining", despawnTime)
+	end
+
+	clone:SetAttribute("DespawnPaused", false)
 	clone.Parent = game.Workspace
 
-	-- ProximityPrompt for pickup
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = "Grab"
 	prompt.ObjectText = brainrotData.name
@@ -80,16 +118,7 @@ function Spawner.spawnOne()
 	occupiedPoints[point] = clone
 	print("Spawned", brainrotData.name, "at", point.Name)
 
-	local despawnTime = Config.DespawnTimes[brainrotData.rarity]
-	if despawnTime then
-		task.delay(despawnTime, function()
-			if clone.Parent then
-				clone:Destroy()
-				Spawner.clearPoint(clone)
-				print(brainrotData.name, "despawned from", point.Name)
-			end
-		end)
-	end
+	Spawner.startDespawnTimer(clone)
 
 	return clone
 end
