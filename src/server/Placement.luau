@@ -1,5 +1,3 @@
--- server/Placement.luau
-
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Config)
@@ -24,6 +22,9 @@ function Placement.setup()
 	for _, base in bases:GetChildren() do
 		local slots = base:FindFirstChild("Slots")
 		if not slots then continue end
+
+		-- Get base center for facing calculation
+		local platform = base:FindFirstChild("Platform")
 
 		for i = 1, Config.MaxSlots do
 			local slot = slots:FindFirstChild("Slot" .. i)
@@ -68,7 +69,17 @@ function Placement.setup()
 					end
 				end
 
-				clone:SetPrimaryPartCFrame(CFrame.new(point.Position + Vector3.new(0, 1, 0)) * CFrame.Angles(0, math.rad(180), 0))
+				-- Face toward base center, with 180 flip for model's forward axis
+                local collectButton = slot:FindFirstChild("CollectButton")
+                local spawnPos = point.Position
+
+                if collectButton then
+                    local targetFlat = Vector3.new(collectButton.Position.X, spawnPos.Y, collectButton.Position.Z)
+                    clone:PivotTo(CFrame.lookAt(spawnPos, targetFlat))
+                else
+                    clone:PivotTo(CFrame.new(spawnPos))
+                end
+
 				clone.Parent = slot
 
 				tool:Destroy()
@@ -85,7 +96,7 @@ end
 
 function Placement.refreshPrompts(player)
 	print("refreshPrompts called for", player.Name)
-	
+
 	local playerBase = nil
 	for _, base in bases:GetChildren() do
 		if Base.getOwner(base) == player then
