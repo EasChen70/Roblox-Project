@@ -145,7 +145,7 @@ function Placement.refreshPrompts(player)
 		if not prompt then continue end
 
 		local occupied = isSlotOccupied(slot)
-		prompt.Enabled = hasItem and not occupied
+		prompt.Enabled = Pickup.isItemEquipped(player) and not occupied
 	end
 end
 

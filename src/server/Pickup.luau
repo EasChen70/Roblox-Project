@@ -8,11 +8,16 @@ local Pickup = {}
 local carrying = {}
 local inventory = {}
 local onStashCallback = nil
+local onEquipCallback = nil -- NEW
 
 local modelsFolder = game:GetService("ServerStorage"):WaitForChild("BrainRotModels")
 
 function Pickup.onStash(callback)
 	onStashCallback = callback
+end
+
+function Pickup.onEquipChanged(callback) -- NEW
+	onEquipCallback = callback
 end
 
 function Pickup.isCarrying(player)
@@ -29,6 +34,13 @@ end
 
 function Pickup.clearInventory(player)
 	inventory[player] = nil
+end
+
+function Pickup.isItemEquipped(player) -- NEW
+	local tool = inventory[player]
+	if not tool then return false end
+	local character = player.Character
+	return character and tool.Parent == character
 end
 
 local function createBrainrotTool(player, data)
@@ -67,12 +79,20 @@ local function createBrainrotTool(player, data)
 		motor.Parent = rightHand
 
 		visual.Parent = character
+
+		if onEquipCallback then -- NEW
+			onEquipCallback(player)
+		end
 	end)
 
 	tool.Unequipped:Connect(function()
 		if visual and visual.Parent then
 			visual:Destroy()
 			visual = nil
+		end
+
+		if onEquipCallback then -- NEW
+			onEquipCallback(player)
 		end
 	end)
 
@@ -204,16 +224,16 @@ end
 local function onDescendantAdded(descendant)
 	if not descendant:IsA("ProximityPrompt") then return end
 
-    descendant.Triggered:Connect(function(player)
-        local model = descendant.Parent
-        while model and not model:IsA("Model") do
-            model = model.Parent
-        end
+	descendant.Triggered:Connect(function(player)
+		local model = descendant.Parent
+		while model and not model:IsA("Model") do
+			model = model.Parent
+		end
 
-        if model and model:GetAttribute("Name") and not model:GetAttribute("Placed") then
-            Pickup.grab(player, model)
-        end
-    end)
+		if model and model:GetAttribute("Name") and not model:GetAttribute("Placed") then
+			Pickup.grab(player, model)
+		end
+	end)
 end
 
 for _, descendant in game.Workspace:GetDescendants() do

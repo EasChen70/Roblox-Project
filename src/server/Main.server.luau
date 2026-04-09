@@ -11,3 +11,8 @@ Placement.setup()
 Pickup.onStash(function(player)
 	Placement.refreshPrompts(player)
 end)
+
+Pickup.onEquipChanged(function(player)
+	Placement.refreshPrompts(player)
+end)
+
