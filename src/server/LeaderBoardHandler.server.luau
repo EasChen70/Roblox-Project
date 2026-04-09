@@ -15,7 +15,7 @@ Players.PlayerAdded:Connect(function(player)
 	income.Parent = stats
 
 	local rebirth = Instance.new("IntValue")
-	rebirth.Name = "Rebirth"
+	rebirth.Name = "Rebirths"
 	rebirth.Value = 0
 	rebirth.Parent = stats
 

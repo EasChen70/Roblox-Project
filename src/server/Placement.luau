@@ -23,9 +23,6 @@ function Placement.setup()
 		local slots = base:FindFirstChild("Slots")
 		if not slots then continue end
 
-		-- Get base center for facing calculation
-		local platform = base:FindFirstChild("Platform")
-
 		for i = 1, Config.MaxSlots do
 			local slot = slots:FindFirstChild("Slot" .. i)
 			if not slot then continue end
@@ -36,7 +33,7 @@ function Placement.setup()
 			local prompt = Instance.new("ProximityPrompt")
 			prompt.ActionText = "Place"
 			prompt.ObjectText = ""
-			prompt.HoldDuration = 0
+			prompt.HoldDuration = Config.PickupHoldDuration
 			prompt.MaxActivationDistance = 8
 			prompt.RequiresLineOfSight = false
 			prompt.Enabled = false
@@ -61,7 +58,7 @@ function Placement.setup()
 				clone:SetAttribute("Name", name)
 				clone:SetAttribute("Rarity", rarity)
 				clone:SetAttribute("IncomePerSec", incomePerSec)
-
+                clone:SetAttribute("Placed", true)
 				for _, part in clone:GetDescendants() do
 					if part:IsA("BasePart") then
 						part.Anchored = true
@@ -69,18 +66,45 @@ function Placement.setup()
 					end
 				end
 
-				-- Face toward base center, with 180 flip for model's forward axis
-                local collectButton = slot:FindFirstChild("CollectButton")
-                local spawnPos = point.Position
+				local collectButton = slot:FindFirstChild("CollectButton")
+				local spawnPos = point.Position
 
-                if collectButton then
-                    local targetFlat = Vector3.new(collectButton.Position.X, spawnPos.Y, collectButton.Position.Z)
-                    clone:PivotTo(CFrame.lookAt(spawnPos, targetFlat))
-                else
-                    clone:PivotTo(CFrame.new(spawnPos))
-                end
+				if collectButton then
+					local targetFlat = Vector3.new(collectButton.Position.X, spawnPos.Y, collectButton.Position.Z)
+					clone:PivotTo(CFrame.lookAt(spawnPos, targetFlat))
+				else
+					clone:PivotTo(CFrame.new(spawnPos))
+				end
 
 				clone.Parent = slot
+
+				-- Pick up prompt on placed brainrot
+				local pickupPrompt = Instance.new("ProximityPrompt")
+				pickupPrompt.ActionText = "Pick Up"
+				pickupPrompt.ObjectText = name
+				pickupPrompt.HoldDuration = Config.PickupHoldDuration
+				pickupPrompt.MaxActivationDistance = 8
+				pickupPrompt.RequiresLineOfSight = false
+				pickupPrompt.Parent = clone.PrimaryPart
+
+				pickupPrompt.Triggered:Connect(function(triggerPlayer)
+					if Base.getOwner(base) ~= triggerPlayer then return end
+					if Pickup.isCarrying(triggerPlayer) then return end
+					if Pickup.getInventoryTool(triggerPlayer) then return end
+
+					local success = Pickup.giveItem(
+						triggerPlayer,
+						clone:GetAttribute("Name"),
+						clone:GetAttribute("Rarity"),
+						clone:GetAttribute("IncomePerSec")
+					)
+
+					if not success then return end
+
+					clone:Destroy()
+					Placement.refreshPrompts(triggerPlayer)
+					print(triggerPlayer.Name, "picked up", name, "from", slot.Name)
+				end)
 
 				tool:Destroy()
 				Pickup.clearInventory(player)
@@ -95,8 +119,6 @@ function Placement.setup()
 end
 
 function Placement.refreshPrompts(player)
-	print("refreshPrompts called for", player.Name)
-
 	local playerBase = nil
 	for _, base in bases:GetChildren() do
 		if Base.getOwner(base) == player then
@@ -105,13 +127,9 @@ function Placement.refreshPrompts(player)
 		end
 	end
 
-	if not playerBase then
-		print("No base found for", player.Name)
-		return
-	end
+	if not playerBase then return end
 
 	local hasItem = Pickup.getInventoryTool(player) ~= nil
-	print("Has item:", hasItem)
 
 	local slots = playerBase:FindFirstChild("Slots")
 	if not slots then return end
@@ -124,14 +142,10 @@ function Placement.refreshPrompts(player)
 		if not point then continue end
 
 		local prompt = point:FindFirstChildOfClass("ProximityPrompt")
-		if not prompt then
-			print("No prompt on", slot.Name)
-			continue
-		end
+		if not prompt then continue end
 
 		local occupied = isSlotOccupied(slot)
 		prompt.Enabled = hasItem and not occupied
-		print(slot.Name, "- enabled:", prompt.Enabled, "occupied:", occupied)
 	end
 end
 

@@ -20,7 +20,7 @@ local Config = {
 	},
 
 	-- Pickup
-	PickupHoldDuration = 0.5,  -- seconds to hold E
+	PickupHoldDuration = 0.6,  -- seconds to hold E
 	PickupRange = 8,            -- studs away to see prompt
 	CarryOffset = Vector3.new(0, 3, 0),  -- height above player head
 }

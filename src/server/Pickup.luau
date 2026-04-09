@@ -1,5 +1,3 @@
--- server/Pickup.luau
-
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Config)
@@ -10,6 +8,8 @@ local Pickup = {}
 local carrying = {}
 local inventory = {}
 local onStashCallback = nil
+
+local modelsFolder = game:GetService("ServerStorage"):WaitForChild("BrainRotModels")
 
 function Pickup.onStash(callback)
 	onStashCallback = callback
@@ -29,6 +29,66 @@ end
 
 function Pickup.clearInventory(player)
 	inventory[player] = nil
+end
+
+local function createBrainrotTool(player, data)
+	local tool = Instance.new("Tool")
+	tool.Name = data.name
+	tool.CanBeDropped = false
+	tool.RequiresHandle = false
+	tool:SetAttribute("Rarity", data.rarity)
+	tool:SetAttribute("IncomePerSec", data.incomePerSec)
+	tool:SetAttribute("BrainrotTool", true)
+
+	local template = modelsFolder:FindFirstChild(data.name)
+	local visual = nil
+
+	tool.Equipped:Connect(function()
+		local character = player.Character
+		if not character or not template then return end
+
+		local rightHand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
+		if not rightHand then return end
+
+		visual = template:Clone()
+		for _, part in visual:GetDescendants() do
+			if part:IsA("BasePart") then
+				part.CanCollide = false
+				part.Anchored = false
+				part.Massless = true
+			end
+		end
+
+		local motor = Instance.new("Motor6D")
+		motor.Part0 = rightHand
+		motor.Part1 = visual.PrimaryPart
+		motor.C0 = CFrame.new(0, 0, -1)
+		motor.C1 = CFrame.new()
+		motor.Parent = rightHand
+
+		visual.Parent = character
+	end)
+
+	tool.Unequipped:Connect(function()
+		if visual and visual.Parent then
+			visual:Destroy()
+			visual = nil
+		end
+	end)
+
+	tool.Parent = player.Backpack
+	inventory[player] = tool
+end
+
+function Pickup.giveItem(player, name, rarity, incomePerSec)
+	if carrying[player] or inventory[player] then return false end
+
+	createBrainrotTool(player, {
+		name = name,
+		rarity = rarity,
+		incomePerSec = incomePerSec,
+	})
+	return true
 end
 
 function Pickup.grab(player, brainrotModel)
@@ -89,52 +149,7 @@ function Pickup.stash(player)
 	brainrotModel:Destroy()
 	carrying[player] = nil
 
-	local tool = Instance.new("Tool")
-	tool.Name = data.name
-	tool.CanBeDropped = false
-	tool.RequiresHandle = false
-	tool:SetAttribute("Rarity", data.rarity)
-	tool:SetAttribute("IncomePerSec", data.incomePerSec)
-	tool:SetAttribute("BrainrotTool", true)
-
-	local modelsFolder = game:GetService("ServerStorage"):WaitForChild("BrainRotModels")
-	local template = modelsFolder:FindFirstChild(data.name)
-
-	local visual = nil
-
-	tool.Equipped:Connect(function()
-		local character = player.Character
-		if not character or not template then return end
-
-		local rightHand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
-		if not rightHand then return end
-
-		visual = template:Clone()
-		for _, part in visual:GetDescendants() do
-			if part:IsA("BasePart") then
-				part.CanCollide = false
-				part.Anchored = false
-			end
-		end
-
-		local weld = Instance.new("WeldConstraint")
-		weld.Part0 = rightHand
-		weld.Part1 = visual.PrimaryPart
-		weld.Parent = visual.PrimaryPart
-
-		visual.PrimaryPart.CFrame = rightHand.CFrame * CFrame.new(0, 0, -1)
-		visual.Parent = character
-	end)
-
-	tool.Unequipped:Connect(function()
-		if visual and visual.Parent then
-			visual:Destroy()
-			visual = nil
-		end
-	end)
-
-	tool.Parent = player.Backpack
-	inventory[player] = tool
+	createBrainrotTool(player, data)
 
 	if onStashCallback then
 		onStashCallback(player)
@@ -168,7 +183,7 @@ function Pickup.drop(player)
 		end
 	end
 
-	brainrotModel:SetPrimaryPartCFrame(CFrame.new(dropPosition))
+	brainrotModel:PivotTo(CFrame.new(dropPosition))
 	brainrotModel.Parent = game.Workspace
 
 	local prompt = brainrotModel.PrimaryPart:FindFirstChildOfClass("ProximityPrompt")
@@ -189,16 +204,16 @@ end
 local function onDescendantAdded(descendant)
 	if not descendant:IsA("ProximityPrompt") then return end
 
-	descendant.Triggered:Connect(function(player)
-		local model = descendant.Parent
-		while model and not model:IsA("Model") do
-			model = model.Parent
-		end
+    descendant.Triggered:Connect(function(player)
+        local model = descendant.Parent
+        while model and not model:IsA("Model") do
+            model = model.Parent
+        end
 
-		if model and model:GetAttribute("Name") then
-			Pickup.grab(player, model)
-		end
-	end)
+        if model and model:GetAttribute("Name") and not model:GetAttribute("Placed") then
+            Pickup.grab(player, model)
+        end
+    end)
 end
 
 for _, descendant in game.Workspace:GetDescendants() do
