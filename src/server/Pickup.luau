@@ -220,6 +220,11 @@ Players.PlayerRemoving:Connect(function(player)
 		brainrotModel:Destroy()
 		carrying[player] = nil
 	end
+
+	local tool = inventory[player]
+	if tool then
+		tool:Destroy()
+	end
 	inventory[player] = nil
 end)
 
