@@ -4,9 +4,12 @@ local Base = require(game.ServerScriptService.Base)
 local Spawner = require(game.ServerScriptService.Spawner)
 local Pickup = require(game.ServerScriptService.Pickup)
 local Placement = require(game.ServerScriptService.Placement)
+local Income = require(game.ServerScriptService.Income)
 
 Spawner.start()
 Placement.setup()
+Income.setup()
+Income.start()
 
 Pickup.onStash(function(player)
 	Placement.refreshPrompts(player)
@@ -15,4 +18,3 @@ end)
 Pickup.onEquipChanged(function(player)
 	Placement.refreshPrompts(player)
 end)
-

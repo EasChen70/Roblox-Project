@@ -21,22 +21,3 @@ Players.PlayerAdded:Connect(function(player)
 
 end)
 
--- Money Payout Loop
-task.spawn(function()
-	while true do
-		task.wait(10)
-		for _, player in pairs(Players:GetPlayers()) do
-			local stats = player:FindFirstChild("leaderstats")
-			if stats then
-				local rebirth = stats:FindFirstChild("Rebirth")
-				local mValue = stats:FindFirstChild("Money")
-				local secValue = stats:FindFirstChild("Money/Sec")
-
-				if mValue and secValue then
-					mValue.Value += (secValue.Value * 10)
-				end
-			end
-		end
-	end
-end)
-
