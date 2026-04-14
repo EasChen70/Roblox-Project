@@ -3,6 +3,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Config)
 local Base = require(game.ServerScriptService.Base)
 local Pickup = require(game.ServerScriptService.Pickup)
+local BrainrotUI = require(game.ReplicatedStorage.BrainrotUI)
 
 local Placement = {}
 
@@ -77,6 +78,12 @@ function Placement.setup()
 				end
 
 				clone.Parent = slot
+				
+				BrainrotUI.createBillboard(clone, {
+					name = name,
+					rarity = rarity,
+					incomePerSec = incomePerSec,
+				})
 
 				-- Pick up prompt on placed brainrot
 				local pickupPrompt = Instance.new("ProximityPrompt")

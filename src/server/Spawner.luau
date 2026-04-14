@@ -3,7 +3,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Config)
 local Brainrots = require(ReplicatedStorage.Brainrots)
-
+local BrainrotUI = require(ReplicatedStorage.BrainrotUI)
 local Spawner = {}
 
 local modelsFolder = game:GetService("ServerStorage"):WaitForChild("BrainRotModels")
@@ -59,16 +59,16 @@ function Spawner.startDespawnTimer(clone)
 	task.spawn(function()
 		while true do
 			task.wait(1)
-			-- Stop loop if grabbed, destroyed, or placed on base
 			if not clone.Parent then return end
 			if clone:GetAttribute("DespawnPaused") then
-				-- Save how much time is left
 				local elapsed = tick() - startTime
 				clone:SetAttribute("DespawnRemaining", math.max(0, remaining - elapsed))
 				return
 			end
 
 			local elapsed = tick() - startTime
+			clone:SetAttribute("DespawnRemaining", math.max(0, remaining - elapsed))  -- ADD THIS
+
 			if elapsed >= remaining then
 				Spawner.clearPoint(clone)
 				clone:Destroy()
@@ -119,6 +119,7 @@ function Spawner.spawnOne()
 	print("Spawned", brainrotData.name, "at", point.Name)
 
 	Spawner.startDespawnTimer(clone)
+	BrainrotUI.createWorldBillboard(clone, brainrotData)
 
 	return clone
 end

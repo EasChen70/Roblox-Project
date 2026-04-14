@@ -2,13 +2,14 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Config)
 local Spawner = require(game.ServerScriptService.Spawner)
+local BrainrotUI = require(game.ReplicatedStorage.BrainrotUI)
 
 local Pickup = {}
 
 local carrying = {}
 local inventory = {}
 local onStashCallback = nil
-local onEquipCallback = nil -- NEW
+local onEquipCallback = nil
 
 local modelsFolder = game:GetService("ServerStorage"):WaitForChild("BrainRotModels")
 
@@ -16,7 +17,7 @@ function Pickup.onStash(callback)
 	onStashCallback = callback
 end
 
-function Pickup.onEquipChanged(callback) -- NEW
+function Pickup.onEquipChanged(callback)
 	onEquipCallback = callback
 end
 
@@ -36,7 +37,7 @@ function Pickup.clearInventory(player)
 	inventory[player] = nil
 end
 
-function Pickup.isItemEquipped(player) -- NEW
+function Pickup.isItemEquipped(player)
 	local tool = inventory[player]
 	if not tool then return false end
 	local character = player.Character
@@ -80,7 +81,13 @@ local function createBrainrotTool(player, data)
 
 		visual.Parent = character
 
-		if onEquipCallback then -- NEW
+		BrainrotUI.createBillboard(visual, {
+			name = data.name,
+			rarity = data.rarity,
+			incomePerSec = data.incomePerSec,
+		})
+		
+		if onEquipCallback then
 			onEquipCallback(player)
 		end
 	end)
@@ -91,7 +98,7 @@ local function createBrainrotTool(player, data)
 			visual = nil
 		end
 
-		if onEquipCallback then -- NEW
+		if onEquipCallback then
 			onEquipCallback(player)
 		end
 	end)
@@ -154,6 +161,16 @@ function Pickup.grab(player, brainrotModel)
 
 	carrying[player] = brainrotModel
 	print(player.Name, "grabbed", brainrotModel:GetAttribute("Name"))
+	local oldBillboard = brainrotModel.PrimaryPart:FindFirstChild("BrainrotBillboard")
+	if oldBillboard then
+		oldBillboard:Destroy()
+	end
+
+	BrainrotUI.createBillboard(brainrotModel, {
+		name = brainrotModel:GetAttribute("Name"),
+		rarity = brainrotModel:GetAttribute("Rarity"),
+		incomePerSec = brainrotModel:GetAttribute("IncomePerSec"),
+	})
 end
 
 function Pickup.stash(player)
@@ -243,8 +260,16 @@ game.Workspace.DescendantAdded:Connect(onDescendantAdded)
 
 Players.PlayerAdded:Connect(function(player)
 	player.CharacterAdded:Connect(function(character)
-		character:WaitForChild("Humanoid").Died:Connect(function()
+		local humanoid = character:WaitForChild("Humanoid")
+
+		humanoid.Died:Connect(function()
 			Pickup.drop(player)
+		end)
+
+		humanoid:GetPropertyChangedSignal("PlatformStand"):Connect(function()
+			if humanoid.PlatformStand then
+				Pickup.drop(player)
+			end
 		end)
 	end)
 end)
