@@ -11,7 +11,7 @@ local inventory = {}
 local onStashCallback = nil
 local onEquipCallback = nil
 
-local modelsFolder = game:GetService("ServerStorage"):WaitForChild("BrainRotModels")
+local modelsFolder = game:GetService("ServerStorage"):WaitForChild("CommonBrainRotModels")
 
 function Pickup.onStash(callback)
 	onStashCallback = callback
@@ -86,7 +86,7 @@ local function createBrainrotTool(player, data)
 			rarity = data.rarity,
 			incomePerSec = data.incomePerSec,
 		})
-		
+
 		if onEquipCallback then
 			onEquipCallback(player)
 		end

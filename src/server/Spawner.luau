@@ -1,12 +1,10 @@
--- server/Spawner.luau
-
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Config)
 local Brainrots = require(ReplicatedStorage.Brainrots)
 local BrainrotUI = require(ReplicatedStorage.BrainrotUI)
 local Spawner = {}
 
-local modelsFolder = game:GetService("ServerStorage"):WaitForChild("BrainRotModels")
+local modelsFolder = game:GetService("ServerStorage"):WaitForChild("CommonBrainRotModels")
 local spawnZone = game.Workspace.SpawnZones.CommonSpawnZone
 local occupiedPoints = {}
 
@@ -48,10 +46,9 @@ local function countSpawned()
 	return count
 end
 
--- Starts or resumes a despawn timer on a brainrot
 function Spawner.startDespawnTimer(clone)
 	local remaining = clone:GetAttribute("DespawnRemaining")
-	if not remaining then return end -- Mythic, no timer
+	if not remaining then return end
 
 	clone:SetAttribute("DespawnPaused", false)
 	local startTime = tick()
@@ -67,7 +64,7 @@ function Spawner.startDespawnTimer(clone)
 			end
 
 			local elapsed = tick() - startTime
-			clone:SetAttribute("DespawnRemaining", math.max(0, remaining - elapsed))  -- ADD THIS
+			clone:SetAttribute("DespawnRemaining", math.max(0, remaining - elapsed))
 
 			if elapsed >= remaining then
 				Spawner.clearPoint(clone)
@@ -93,12 +90,11 @@ function Spawner.spawnOne()
 	end
 
 	local clone = template:Clone()
-	clone:SetPrimaryPartCFrame(CFrame.new(point.Position + Vector3.new(0, 2, 0)))
+	clone:PivotTo(CFrame.new(point.Position + Vector3.new(0, -2, 0)))
 	clone:SetAttribute("Rarity", brainrotData.rarity)
 	clone:SetAttribute("IncomePerSec", brainrotData.incomePerSec)
 	clone:SetAttribute("Name", brainrotData.name)
 
-	-- Set despawn timer attribute
 	local despawnTime = Config.DespawnTimes[brainrotData.rarity]
 	if despawnTime then
 		clone:SetAttribute("DespawnRemaining", despawnTime)

@@ -46,8 +46,14 @@ end
 local function createBillboardGui(model, studsOffset)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "BrainrotBillboard"
-    billboard.Size = UDim2.new(8, 0, 5, 0)
-	billboard.StudsOffset = studsOffset or Vector3.new(0, 4, 0)
+	billboard.Size = UDim2.new(8, 0, 5, 0)
+
+	if not studsOffset then
+		local extents = model:GetExtentsSize()
+		studsOffset = Vector3.new(0, extents.Y / 2 + 10, 0)
+	end
+
+	billboard.StudsOffset = studsOffset
 	billboard.AlwaysOnTop = true
 	billboard.LightInfluence = 0
 	billboard.Parent = model.PrimaryPart
@@ -90,7 +96,7 @@ function BrainrotUI.createWorldBillboard(model, data)
 	local rarity = data.rarity or "Common"
 	local rarityColor = RarityColors[rarity] or RarityColors.Common
 
-	local billboard, frame = createBillboardGui(model, Vector3.new(0, 5, 0))
+	local billboard, frame = createBillboardGui(model, Vector3.new(0, 12, 0))
 	billboard.Size = UDim2.new(8, 0, 6, 0)
 
 	local timerLabel = makeLabel("Timer", "", Color3.fromRGB(255, 255, 255), 0, 24)
@@ -110,17 +116,12 @@ function BrainrotUI.createWorldBillboard(model, data)
 	local rarityLabel = makeLabel("Rarity", rarity, rarityColor, 3, 28)
 	rarityLabel.Parent = frame
 
-	-- Timer update loop
 	if despawnTime then
 		task.spawn(function()
 			while model.Parent and billboard.Parent do
 				local remaining = model:GetAttribute("DespawnRemaining")
 				if not remaining then break end
-				if model:GetAttribute("DespawnPaused") then
-					timerLabel.Text = math.ceil(remaining) .. "s"
-				else
-					timerLabel.Text = math.ceil(remaining) .. "s"
-				end
+				timerLabel.Text = math.ceil(remaining) .. "s"
 				task.wait(1)
 			end
 		end)

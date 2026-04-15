@@ -7,7 +7,7 @@ local BrainrotUI = require(game.ReplicatedStorage.BrainrotUI)
 
 local Placement = {}
 
-local modelsFolder = game:GetService("ServerStorage"):WaitForChild("BrainRotModels")
+local modelsFolder = game:GetService("ServerStorage"):WaitForChild("CommonBrainRotModels")
 local bases = game.Workspace.Map.Bases
 
 local function isSlotOccupied(slot)
@@ -72,13 +72,13 @@ function Placement.setup()
 
 				if collectButton then
 					local targetFlat = Vector3.new(collectButton.Position.X, spawnPos.Y, collectButton.Position.Z)
-					clone:PivotTo(CFrame.lookAt(spawnPos, targetFlat))
+					clone:PivotTo(CFrame.lookAt(spawnPos, targetFlat) * CFrame.Angles(0, math.rad(180), 0))
 				else
 					clone:PivotTo(CFrame.new(spawnPos))
 				end
 
 				clone.Parent = slot
-				
+
 				BrainrotUI.createBillboard(clone, {
 					name = name,
 					rarity = rarity,
