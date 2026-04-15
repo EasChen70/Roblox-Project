@@ -1,47 +1,25 @@
--- server/Income.luau
-
 local Players = game:GetService("Players")
 local Config = require(game.ReplicatedStorage.Config)
 local Base = require(game.ServerScriptService.Base)
+local Remotes = require(game.ReplicatedStorage.Remotes)
 
 local Income = {}
 
 local bases = game.Workspace.Map.Bases
 
 local function formatMoney(amount)
-	if amount < 1000 then
-		return "$" .. math.floor(amount)
-	elseif amount < 1000000 then
-		local k = amount / 1000
-		if k >= 100 then
-			return "$" .. math.floor(k) .. "k"
-		elseif k >= 10 then
-			return "$" .. string.format("%.1f", k) .. "k"
-		else
-			return "$" .. string.format("%.1f", k) .. "k"
-		end
-	elseif amount < 1000000000 then
-		local m = amount / 1000000
-		if m >= 100 then
-			return "$" .. math.floor(m) .. "m"
-		else
-			return "$" .. string.format("%.1f", m) .. "m"
-		end
-	elseif amount < 1000000000000 then
-		local b = amount / 1000000000
-		if b >= 100 then
-			return "$" .. math.floor(b) .. "b"
-		else
-			return "$" .. string.format("%.1f", b) .. "b"
-		end
-	else
-		local t = amount / 1000000000000
-		if t >= 100 then
-			return "$" .. math.floor(t) .. "t"
-		else
-			return "$" .. string.format("%.1f", t) .. "t"
+	local tiers = {
+		{1e12, "t"},
+		{1e9, "b"},
+		{1e6, "m"},
+		{1e3, "k"},
+	}
+	for _, tier in tiers do
+		if amount >= tier[1] then
+			return "$" .. string.format("%.1f", amount / tier[1]) .. tier[2]
 		end
 	end
+	return "$" .. math.floor(amount)
 end
 
 local function getPlacedBrainrot(slot)
@@ -66,17 +44,16 @@ local function createBillboard(collectButton)
 	label.Size = UDim2.new(1, 0, 1, 0)
 	label.BackgroundTransparency = 1
 	label.TextColor3 = Color3.fromRGB(255, 255, 255)
-	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	label.TextStrokeTransparency = 1  
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(0, 0, 0)
-    stroke.Thickness = 3
-    stroke.Parent = label
+	label.TextStrokeTransparency = 1
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(0, 0, 0)
+	stroke.Thickness = 3
+	stroke.Parent = label
 	label.TextScaled = true
 	label.Font = Enum.Font.LuckiestGuy
 	label.Text = "$0"
 	label.Parent = surface
-    label.Rotation = 90
+	label.Rotation = 90
 
 	return surface
 end
@@ -121,21 +98,12 @@ function Income.setup()
 				if not stats then return end
 				local money = stats:FindFirstChild("Money")
 				if not money then return end
-                money.Value += accumulated
-                slot:SetAttribute("AccumulatedCash", 0)
-                updateBillboard(collectButton, 0)
-				local audio = game.Workspace.Map:FindFirstChild("Audio")
-                if audio then
-                    local cashSound = audio:FindFirstChild("cashEffect")
-                    if cashSound then
-                        local sfx = cashSound:Clone()
-                        sfx.Parent = collectButton
-                        sfx:Play()
-                        sfx.Ended:Once(function()
-                            sfx:Destroy()
-                        end)
-                    end
-                end
+
+				money.Value += accumulated
+				slot:SetAttribute("AccumulatedCash", 0)
+				updateBillboard(collectButton, 0)
+
+				Remotes.CollectSlot:FireClient(player)
 			end)
 		end
 	end
@@ -180,6 +148,7 @@ function Income.start()
 							incomeStat.Value = totalIncome
 						end
 					end
+					Base.updateSignIncome(base, formatMoney(totalIncome) .. "/s")
 				end
 			end
 		end

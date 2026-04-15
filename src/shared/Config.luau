@@ -7,8 +7,8 @@ local Config = {
 	IncomeTickRate = 1,
 
 	-- Spawner
-	SpawnInterval = 5,
-	MaxSpawns = 8,
+	SpawnInterval = 3,
+	MaxSpawns = 10,
 
 	-- Despawn times per rarity (seconds, nil = never despawns)
 	DespawnTimes = {

@@ -30,7 +30,6 @@ function Pickup.getInventory(player)
 end
 
 function Pickup.getInventoryTool(player)
-	-- Returns the currently equipped brainrot tool, or nil
 	local items = inventory[player]
 	if not items then return nil end
 	local character = player.Character
@@ -170,7 +169,16 @@ function Pickup.grab(player, brainrotModel)
 			part.Anchored = false
 		end
 	end
-
+	
+	-- Ensure all parts are connected to PrimaryPart
+	for _, part in brainrotModel:GetDescendants() do
+		if part:IsA("BasePart") and part ~= brainrotModel.PrimaryPart then
+			local w = Instance.new("WeldConstraint")
+			w.Part0 = brainrotModel.PrimaryPart
+			w.Part1 = part
+			w.Parent = part
+		end
+	end
 	local weld = Instance.new("WeldConstraint")
 	weld.Part0 = rootPart
 	weld.Part1 = brainrotModel.PrimaryPart
@@ -220,20 +228,24 @@ function Pickup.drop(player)
 	local brainrotModel = carrying[player]
 	if not brainrotModel then return end
 
+	carrying[player] = nil
+
+	-- Destroy only welds connecting to the character
 	local character = player.Character
-	local dropPosition
-
-	if character and character:FindFirstChild("HumanoidRootPart") then
-		dropPosition = character.HumanoidRootPart.Position + Vector3.new(0, 2, 0)
-	else
-		dropPosition = Vector3.new(0, 10, 0)
+	for _, descendant in brainrotModel:GetDescendants() do
+		if descendant:IsA("WeldConstraint") then
+			if descendant.Part0 and descendant.Part0:IsDescendantOf(character) then
+				descendant:Destroy()
+			elseif descendant.Part1 and descendant.Part1:IsDescendantOf(character) then
+				descendant:Destroy()
+			end
+		end
 	end
 
-	local weld = brainrotModel.PrimaryPart:FindFirstChildOfClass("WeldConstraint")
-	if weld then
-		weld:Destroy()
-	end
+	-- Reparent to Workspace immediately
+	brainrotModel.Parent = game.Workspace
 
+	-- Anchor all parts
 	for _, part in brainrotModel:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = true
@@ -241,17 +253,59 @@ function Pickup.drop(player)
 		end
 	end
 
-	brainrotModel:PivotTo(CFrame.new(dropPosition))
-	brainrotModel.Parent = game.Workspace
+	-- Raycast to find ground
+	local character = player.Character
+	local dropPosition
 
-	local prompt = brainrotModel.PrimaryPart:FindFirstChildOfClass("ProximityPrompt")
-	if prompt then
-		prompt.Enabled = true
+	if character and character:FindFirstChild("HumanoidRootPart") then
+		local origin = character.HumanoidRootPart.Position
+		local params = RaycastParams.new()
+		params.FilterDescendantsInstances = {character, brainrotModel}
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		local rayResult = game.Workspace:Raycast(origin, Vector3.new(0, -200, 0), params)
+		if rayResult then
+			dropPosition = rayResult.Position + Vector3.new(0, 1, 0)
+		else
+			dropPosition = Vector3.new(origin.X, 0, origin.Z)
+		end
+	else
+		dropPosition = Vector3.new(0, 10, 0)
 	end
+
+	brainrotModel:PivotTo(CFrame.new(dropPosition))
+
+	-- Billboard
+	local oldBillboard = brainrotModel.PrimaryPart:FindFirstChild("BrainrotBillboard")
+	if oldBillboard then
+		oldBillboard:Destroy()
+	end
+
+	BrainrotUI.createWorldBillboard(brainrotModel, {
+		name = brainrotModel:GetAttribute("Name"),
+		rarity = brainrotModel:GetAttribute("Rarity"),
+		incomePerSec = brainrotModel:GetAttribute("IncomePerSec"),
+	})
 
 	Spawner.startDespawnTimer(brainrotModel)
 
-	carrying[player] = nil
+	-- Delay prompt so other player can't grab during physics settle
+	task.delay(0.5, function()
+		if not brainrotModel.Parent then return end
+
+		local prompt = brainrotModel.PrimaryPart:FindFirstChildOfClass("ProximityPrompt")
+		if not prompt then
+			prompt = Instance.new("ProximityPrompt")
+			prompt.ActionText = "Grab"
+			prompt.ObjectText = brainrotModel:GetAttribute("Name")
+			prompt.HoldDuration = Config.PickupHoldDuration
+			prompt.MaxActivationDistance = Config.PickupRange
+			prompt.RequiresLineOfSight = false
+			prompt.Parent = brainrotModel.PrimaryPart
+		else
+			prompt.Enabled = true
+		end
+	end)
+
 	print(player.Name, "dropped", brainrotModel:GetAttribute("Name"))
 end
 

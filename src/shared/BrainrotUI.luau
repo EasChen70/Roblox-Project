@@ -122,6 +122,9 @@ function BrainrotUI.createWorldBillboard(model, data)
 				local remaining = model:GetAttribute("DespawnRemaining")
 				if not remaining then break end
 				timerLabel.Text = "🕐 " .. math.ceil(remaining) .. "s"
+				if remaining <= 10 then
+					timerLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+				end
 				task.wait(1)
 			end
 		end)

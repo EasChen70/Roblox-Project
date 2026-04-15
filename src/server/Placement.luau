@@ -19,6 +19,15 @@ local function isSlotOccupied(slot)
 	return false
 end
 
+-- minimal helper: attachment-based prompt anchoring
+local function createPromptAttachment(parentPart, name, yOffset)
+	local att = Instance.new("Attachment")
+	att.Name = name
+	att.Position = Vector3.new(0, yOffset, 0)
+	att.Parent = parentPart
+	return att
+end
+
 function Placement.setup()
 	for _, base in bases:GetChildren() do
 		local slots = base:FindFirstChild("Slots")
@@ -34,7 +43,7 @@ function Placement.setup()
 			local prompt = Instance.new("ProximityPrompt")
 			prompt.ActionText = "Place"
 			prompt.ObjectText = ""
-			prompt.HoldDuration = Config.PickupHoldDuration
+			prompt.HoldDuration = 0
 			prompt.MaxActivationDistance = 8
 			prompt.RequiresLineOfSight = false
 			prompt.Enabled = false
@@ -60,6 +69,7 @@ function Placement.setup()
 				clone:SetAttribute("Rarity", rarity)
 				clone:SetAttribute("IncomePerSec", incomePerSec)
 				clone:SetAttribute("Placed", true)
+
 				for _, part in clone:GetDescendants() do
 					if part:IsA("BasePart") then
 						part.Anchored = true
@@ -71,7 +81,11 @@ function Placement.setup()
 				local spawnPos = point.Position
 
 				if collectButton then
-					local targetFlat = Vector3.new(collectButton.Position.X, spawnPos.Y, collectButton.Position.Z)
+					local targetFlat = Vector3.new(
+						collectButton.Position.X,
+						spawnPos.Y,
+						collectButton.Position.Z
+					)
 					clone:PivotTo(CFrame.lookAt(spawnPos, targetFlat) * CFrame.Angles(0, math.rad(180), 0))
 				else
 					clone:PivotTo(CFrame.new(spawnPos))
@@ -85,14 +99,16 @@ function Placement.setup()
 					incomePerSec = incomePerSec,
 				})
 
-				-- Pick up prompt on placed brainrot
+				-- Pick up prompt (E)
 				local pickupPrompt = Instance.new("ProximityPrompt")
 				pickupPrompt.ActionText = "Pick Up"
 				pickupPrompt.ObjectText = name
 				pickupPrompt.HoldDuration = Config.PickupHoldDuration
 				pickupPrompt.MaxActivationDistance = 8
 				pickupPrompt.RequiresLineOfSight = false
-				pickupPrompt.Parent = clone.PrimaryPart
+
+				local pickupAttachment = createPromptAttachment(clone.PrimaryPart, "PickupAttachment", 2.5)
+				pickupPrompt.Parent = pickupAttachment
 
 				pickupPrompt.Triggered:Connect(function(triggerPlayer)
 					if Base.getOwner(base) ~= triggerPlayer then return end
@@ -110,6 +126,47 @@ function Placement.setup()
 					clone:Destroy()
 					Placement.refreshPrompts(triggerPlayer)
 					print(triggerPlayer.Name, "picked up", name, "from", slot.Name)
+				end)
+
+				-- Sell prompt (F)
+				local sellPrompt = Instance.new("ProximityPrompt")
+				sellPrompt.ActionText = "Sell"
+				sellPrompt.ObjectText = "$" .. (incomePerSec * 10)
+				sellPrompt.HoldDuration = Config.PickupHoldDuration + 0.05
+				sellPrompt.MaxActivationDistance = 8
+				sellPrompt.RequiresLineOfSight = false
+				sellPrompt.KeyboardKeyCode = Enum.KeyCode.F
+
+				local sellAttachment = createPromptAttachment(clone.PrimaryPart, "SellAttachment", 6)
+				sellPrompt.Parent = sellAttachment
+
+				sellPrompt.Triggered:Connect(function(triggerPlayer)
+					if Base.getOwner(base) ~= triggerPlayer then return end
+
+					local sellValue = clone:GetAttribute("IncomePerSec") * 10
+					local stats = triggerPlayer:FindFirstChild("leaderstats")
+					if stats then
+						local money = stats:FindFirstChild("Money")
+						if money then
+							money.Value += sellValue
+						end
+					end
+
+					slot:SetAttribute("AccumulatedCash", 0)
+					local cb = slot:FindFirstChild("CollectButton")
+					if cb then
+						local billboard = cb:FindFirstChild("CashDisplay")
+						if billboard then
+							local label = billboard:FindFirstChild("Amount")
+							if label then
+								label.Text = "$0"
+							end
+						end
+					end
+
+					clone:Destroy()
+					Placement.refreshPrompts(triggerPlayer)
+					print(triggerPlayer.Name, "sold", name, "for $" .. sellValue)
 				end)
 
 				Pickup.removeFromInventory(player, tool)
