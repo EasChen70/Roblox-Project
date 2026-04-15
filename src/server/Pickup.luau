@@ -7,7 +7,7 @@ local BrainrotUI = require(game.ReplicatedStorage.BrainrotUI)
 local Pickup = {}
 
 local carrying = {}
-local inventory = {}
+local inventory = {} -- player → array of Tools
 local onStashCallback = nil
 local onEquipCallback = nil
 
@@ -30,18 +30,31 @@ function Pickup.getInventory(player)
 end
 
 function Pickup.getInventoryTool(player)
-	return inventory[player]
-end
-
-function Pickup.clearInventory(player)
-	inventory[player] = nil
+	-- Returns the currently equipped brainrot tool, or nil
+	local items = inventory[player]
+	if not items then return nil end
+	local character = player.Character
+	for _, tool in items do
+		if character and tool.Parent == character then
+			return tool
+		end
+	end
+	return nil
 end
 
 function Pickup.isItemEquipped(player)
-	local tool = inventory[player]
-	if not tool then return false end
-	local character = player.Character
-	return character and tool.Parent == character
+	return Pickup.getInventoryTool(player) ~= nil
+end
+
+function Pickup.removeFromInventory(player, tool)
+	local items = inventory[player]
+	if not items then return end
+	for i, t in items do
+		if t == tool then
+			table.remove(items, i)
+			return
+		end
+	end
 end
 
 local function createBrainrotTool(player, data)
@@ -104,11 +117,17 @@ local function createBrainrotTool(player, data)
 	end)
 
 	tool.Parent = player.Backpack
-	inventory[player] = tool
+
+	if not inventory[player] then
+		inventory[player] = {}
+	end
+	table.insert(inventory[player], tool)
 end
 
 function Pickup.giveItem(player, name, rarity, incomePerSec)
-	if carrying[player] or inventory[player] then return false end
+	if carrying[player] then return false end
+	local items = inventory[player]
+	if items and #items >= Config.MaxInventory then return false end
 
 	createBrainrotTool(player, {
 		name = name,
@@ -124,8 +143,9 @@ function Pickup.grab(player, brainrotModel)
 		return
 	end
 
-	if inventory[player] then
-		warn(player.Name, "already has a brainrot in inventory")
+	local items = inventory[player]
+	if items and #items >= Config.MaxInventory then
+		warn(player.Name, "inventory full")
 		return
 	end
 
@@ -161,6 +181,7 @@ function Pickup.grab(player, brainrotModel)
 
 	carrying[player] = brainrotModel
 	print(player.Name, "grabbed", brainrotModel:GetAttribute("Name"))
+
 	local oldBillboard = brainrotModel.PrimaryPart:FindFirstChild("BrainrotBillboard")
 	if oldBillboard then
 		oldBillboard:Destroy()
@@ -281,9 +302,11 @@ Players.PlayerRemoving:Connect(function(player)
 		carrying[player] = nil
 	end
 
-	local tool = inventory[player]
-	if tool then
-		tool:Destroy()
+	local items = inventory[player]
+	if items then
+		for _, tool in items do
+			tool:Destroy()
+		end
 	end
 	inventory[player] = nil
 end)

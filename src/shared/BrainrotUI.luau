@@ -50,7 +50,7 @@ local function createBillboardGui(model, studsOffset)
 
 	if not studsOffset then
 		local extents = model:GetExtentsSize()
-		studsOffset = Vector3.new(0, extents.Y / 2 + 10, 0)
+		studsOffset = Vector3.new(0, extents.Y / 2 + 8, 0)
 	end
 
 	billboard.StudsOffset = studsOffset
@@ -103,7 +103,7 @@ function BrainrotUI.createWorldBillboard(model, data)
 
 	local despawnTime = model:GetAttribute("DespawnRemaining")
 	if despawnTime then
-		timerLabel.Text = math.ceil(despawnTime) .. "s"
+		timerLabel.Text = "🕐 " .. math.ceil(despawnTime) .. "s"
 		timerLabel.Parent = frame
 	end
 
@@ -121,7 +121,7 @@ function BrainrotUI.createWorldBillboard(model, data)
 			while model.Parent and billboard.Parent do
 				local remaining = model:GetAttribute("DespawnRemaining")
 				if not remaining then break end
-				timerLabel.Text = math.ceil(remaining) .. "s"
+				timerLabel.Text = "🕐 " .. math.ceil(remaining) .. "s"
 				task.wait(1)
 			end
 		end)

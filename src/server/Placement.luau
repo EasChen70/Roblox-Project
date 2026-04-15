@@ -59,7 +59,7 @@ function Placement.setup()
 				clone:SetAttribute("Name", name)
 				clone:SetAttribute("Rarity", rarity)
 				clone:SetAttribute("IncomePerSec", incomePerSec)
-                clone:SetAttribute("Placed", true)
+				clone:SetAttribute("Placed", true)
 				for _, part in clone:GetDescendants() do
 					if part:IsA("BasePart") then
 						part.Anchored = true
@@ -97,7 +97,6 @@ function Placement.setup()
 				pickupPrompt.Triggered:Connect(function(triggerPlayer)
 					if Base.getOwner(base) ~= triggerPlayer then return end
 					if Pickup.isCarrying(triggerPlayer) then return end
-					if Pickup.getInventoryTool(triggerPlayer) then return end
 
 					local success = Pickup.giveItem(
 						triggerPlayer,
@@ -113,8 +112,8 @@ function Placement.setup()
 					print(triggerPlayer.Name, "picked up", name, "from", slot.Name)
 				end)
 
+				Pickup.removeFromInventory(player, tool)
 				tool:Destroy()
-				Pickup.clearInventory(player)
 
 				prompt.Enabled = false
 				Placement.refreshPrompts(player)
@@ -135,8 +134,6 @@ function Placement.refreshPrompts(player)
 	end
 
 	if not playerBase then return end
-
-	local hasItem = Pickup.getInventoryTool(player) ~= nil
 
 	local slots = playerBase:FindFirstChild("Slots")
 	if not slots then return end
