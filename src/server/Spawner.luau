@@ -95,7 +95,7 @@ function Spawner.spawnOne()
 	clone:SetAttribute("IncomePerSec", brainrotData.incomePerSec)
 	clone:SetAttribute("Name", brainrotData.name)
 
-	local despawnTime = math.random(30,60) --Config.DespawnTimes[brainrotData.rarity]
+	local despawnTime = math.random(Config.DespawnTimeMin, Config.DespawnTimeMax) --Config.DespawnTimes[brainrotData.rarity]
 	if despawnTime then
 		clone:SetAttribute("DespawnRemaining", despawnTime)
 	end

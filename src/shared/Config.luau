@@ -9,15 +9,8 @@ local Config = {
 	-- Spawner
 	SpawnInterval = 3,
 	MaxSpawns = 10,
-
-	-- Despawn times per rarity (seconds, nil = never despawns)
-	DespawnTimes = {
-		Common = 30,
-		Rare = 45,
-		Epic = 60,
-		Legendary = 90,
-		Mythic = nil,
-	},
+	DespawnTimeMin = 30,
+	DespawnTimeMax = 60,
 
 	-- Pickup
 	MaxInventory = 10,
