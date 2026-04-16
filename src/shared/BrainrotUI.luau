@@ -1,5 +1,7 @@
 local BrainrotUI = {}
 
+local Util = require(game.ReplicatedStorage.Util)
+
 local RarityColors = {
 	Common = Color3.fromRGB(255, 255, 255),
 	Rare = Color3.fromRGB(0, 170, 255),
@@ -9,20 +11,6 @@ local RarityColors = {
 	["Brainrot God"] = Color3.fromRGB(255, 0, 100),
 	Secret = Color3.fromRGB(0, 0, 0),
 }
-
-local function formatMoney(amount)
-	if amount < 1000 then
-		return "$" .. math.floor(amount)
-	elseif amount < 1000000 then
-		return "$" .. string.format("%.1f", amount / 1000) .. "k"
-	elseif amount < 1000000000 then
-		return "$" .. string.format("%.1f", amount / 1000000) .. "m"
-	elseif amount < 1000000000000 then
-		return "$" .. string.format("%.1f", amount / 1000000000) .. "b"
-	else
-		return "$" .. string.format("%.1f", amount / 1000000000000) .. "t"
-	end
-end
 
 local function makeLabel(name, text, color, order, size)
 	local label = Instance.new("TextLabel")
@@ -80,7 +68,7 @@ function BrainrotUI.createBillboard(model, data)
 
 	local billboard, frame = createBillboardGui(model)
 
-	local incomeLabel = makeLabel("Income", formatMoney(data.incomePerSec) .. "/s", Color3.fromRGB(85, 255, 85), 1, 22)
+	local incomeLabel = makeLabel("Income", Util.formatMoney(data.incomePerSec) .. "/s", Color3.fromRGB(85, 255, 85), 1, 22)
 	incomeLabel.Parent = frame
 
 	local nameLabel = makeLabel("Name", data.name, Color3.fromRGB(255, 255, 255), 2, 20)
@@ -107,7 +95,7 @@ function BrainrotUI.createWorldBillboard(model, data)
 		timerLabel.Parent = frame
 	end
 
-	local incomeLabel = makeLabel("Income", formatMoney(data.incomePerSec) .. "/s", Color3.fromRGB(85, 255, 85), 1, 22)
+	local incomeLabel = makeLabel("Income", Util.formatMoney(data.incomePerSec) .. "/s", Color3.fromRGB(85, 255, 85), 1, 22)
 	incomeLabel.Parent = frame
 
 	local nameLabel = makeLabel("Name", data.name, Color3.fromRGB(255, 255, 255), 2, 20)

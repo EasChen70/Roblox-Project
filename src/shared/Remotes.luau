@@ -6,12 +6,8 @@ local RunService = game:GetService("RunService")
 local Remotes = {}
 
 local remoteNames = {
-	"ClaimBase",       -- client → server: request a base on join
 	"BaseAssigned",    -- server → client: tells client which base they got
 	"CollectSlot",     -- client → server: player clicked a CollectButton
-	"UpdateCash",      -- server → client: send new cash total to display
-	"GrabBrainrot",    -- client → server: player touched a brainrot in common area
-	"PlaceBrainrot",   -- client → server: player places brainrot on a slot
 }
 
 if RunService:IsServer() then

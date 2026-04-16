@@ -2,25 +2,11 @@ local Players = game:GetService("Players")
 local Config = require(game.ReplicatedStorage.Config)
 local Base = require(game.ServerScriptService.Base)
 local Remotes = require(game.ReplicatedStorage.Remotes)
+local Util = require(game.ReplicatedStorage.Util)
 
 local Income = {}
 
 local bases = game.Workspace.Map.Bases
-
-local function formatMoney(amount)
-	local tiers = {
-		{1e12, "t"},
-		{1e9, "b"},
-		{1e6, "m"},
-		{1e3, "k"},
-	}
-	for _, tier in tiers do
-		if amount >= tier[1] then
-			return "$" .. string.format("%.1f", amount / tier[1]) .. tier[2]
-		end
-	end
-	return "$" .. math.floor(amount)
-end
 
 local function getPlacedBrainrot(slot)
 	for _, child in slot:GetChildren() do
@@ -63,7 +49,7 @@ local function updateBillboard(collectButton, amount)
 	if not billboard then return end
 	local label = billboard:FindFirstChild("Amount")
 	if not label then return end
-	label.Text = formatMoney(amount)
+	label.Text = Util.formatMoney(amount)
 end
 
 function Income.setup()
@@ -148,7 +134,7 @@ function Income.start()
 							incomeStat.Value = totalIncome
 						end
 					end
-					Base.updateSignIncome(base, formatMoney(totalIncome) .. "/s")
+					Base.updateSignIncome(base, Util.formatMoney(totalIncome) .. "/s")
 				end
 			end
 		end
