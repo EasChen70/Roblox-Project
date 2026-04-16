@@ -7,7 +7,16 @@ local BrainrotUI = require(game.ReplicatedStorage.BrainrotUI)
 
 local Placement = {}
 
-local modelsFolder = game:GetService("ServerStorage"):WaitForChild("CommonBrainRotModels")
+local ServerStorage = game:GetService("ServerStorage")
+
+local modelFolders = {
+	Common    = ServerStorage:WaitForChild("CommonBrainRotModels"),
+	Rare      = ServerStorage:WaitForChild("RareBrainRotModels"),
+	Epic      = ServerStorage:WaitForChild("EpicBrainRotModels"),
+	Legendary = ServerStorage:WaitForChild("LegendaryBrainRotModels"),
+	Mythic    = ServerStorage:WaitForChild("MythicBrainRotModels"),
+	Secret    = ServerStorage:WaitForChild("SecretBrainRotModels"),
+}
 local bases = game.Workspace.Map.Bases
 
 local function isSlotOccupied(slot)
@@ -61,8 +70,19 @@ function Placement.setup()
 				local rarity = tool:GetAttribute("Rarity")
 				local incomePerSec = tool:GetAttribute("IncomePerSec")
 
-				local template = modelsFolder:FindFirstChild(name)
-				if not template then return end
+				print("[Placement] Attempting place:", name, "rarity:", rarity, "income:", incomePerSec)
+
+				local folder = modelFolders[rarity]
+				if not folder then
+					warn("[Placement] No folder for rarity:", rarity)
+					return
+				end
+
+				local template = folder:FindFirstChild(name)
+				if not template then
+					warn("[Placement] No template for '" .. tostring(name) .. "' in", folder.Name)
+					return
+				end
 
 				local clone = template:Clone()
 				clone:SetAttribute("Name", name)
@@ -78,7 +98,8 @@ function Placement.setup()
 				end
 
 				local collectButton = slot:FindFirstChild("CollectButton")
-				local spawnPos = point.Position
+				local placementOffset = Vector3.new(0, Config.PlacementYOffset, 0)
+				local spawnPos = point.Position + placementOffset
 
 				if collectButton then
 					local targetFlat = Vector3.new(

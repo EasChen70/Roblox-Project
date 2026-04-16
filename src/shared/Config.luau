@@ -5,6 +5,7 @@ local Config = {
 	MaxSlots = 12,
 	MaxPlayers = 5,
 	IncomeTickRate = 1,
+	PlacementYOffset = -0.5,
 
 	-- Spawner
 	SpawnInterval = 3,
@@ -14,9 +15,11 @@ local Config = {
 
 	-- Pickup
 	MaxInventory = 10,
-	PickupHoldDuration = 0.6,  -- seconds to hold E
-	PickupRange = 8,            -- studs away to see prompt
-	CarryOffset = Vector3.new(0, 3, 0),  -- height above player head
+	PickupHoldDuration = 0.6,
+	PickupRange = 8,
+	CarryOffset = Vector3.new(0, 3, 0),
+	CarryRotation = CFrame.Angles(0, math.rad(180), 0),
+	CarryAnimationId = "rbxassetid://76257603071803",
 }
 
 return Config

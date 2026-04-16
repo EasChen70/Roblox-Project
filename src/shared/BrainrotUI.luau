@@ -2,14 +2,16 @@ local BrainrotUI = {}
 
 local Util = require(game.ReplicatedStorage.Util)
 
+local MAX_VISIBILITY_DISTANCE = 100
+
 local RarityColors = {
-	Common = Color3.fromRGB(255, 255, 255),
+	Common = Color3.fromRGB(85, 255, 85),
 	Rare = Color3.fromRGB(0, 170, 255),
 	Epic = Color3.fromRGB(170, 0, 255),
 	Legendary = Color3.fromRGB(255, 170, 0),
 	Mythic = Color3.fromRGB(255, 50, 50),
+    Secret = Color3.fromRGB(50, 50, 50),
 	["Brainrot God"] = Color3.fromRGB(255, 0, 100),
-	Secret = Color3.fromRGB(0, 0, 0),
 }
 
 local function makeLabel(name, text, color, order, size)
@@ -35,6 +37,8 @@ local function createBillboardGui(model, studsOffset)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "BrainrotBillboard"
 	billboard.Size = UDim2.new(8, 0, 5, 0)
+	
+	billboard.MaxDistance = MAX_VISIBILITY_DISTANCE
 
 	if not studsOffset then
 		local extents = model:GetExtentsSize()
@@ -76,7 +80,13 @@ function BrainrotUI.createBillboard(model, data)
 
 	local rarityLabel = makeLabel("Rarity", rarity, rarityColor, 3, 28)
 	rarityLabel.Parent = frame
-
+    if rarity == "Secret" then
+        local stroke = rarityLabel:FindFirstChildOfClass("UIStroke")
+        if stroke then
+            stroke.Color = Color3.fromRGB(255, 255, 255)
+            stroke.Thickness = 0.5
+        end
+    end
 	return billboard
 end
 
@@ -103,7 +113,14 @@ function BrainrotUI.createWorldBillboard(model, data)
 
 	local rarityLabel = makeLabel("Rarity", rarity, rarityColor, 3, 28)
 	rarityLabel.Parent = frame
-
+    
+    if rarity == "Secret" then
+        local stroke = rarityLabel:FindFirstChildOfClass("UIStroke")
+        if stroke then
+            stroke.Color = Color3.fromRGB(255, 255, 255)
+            stroke.Thickness = 0.5
+        end
+    end
 	if despawnTime then
 		task.spawn(function()
 			while model.Parent and billboard.Parent do

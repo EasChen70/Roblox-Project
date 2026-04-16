@@ -1,35 +1,135 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 local Config = require(ReplicatedStorage.Config)
 local Brainrots = require(ReplicatedStorage.Brainrots)
 local BrainrotUI = require(ReplicatedStorage.BrainrotUI)
+
 local Spawner = {}
 
-local modelsFolder = game:GetService("ServerStorage"):WaitForChild("CommonBrainRotModels")
-local spawnZone = game.Workspace.SpawnZones.CommonSpawnZone
-local occupiedPoints = {}
+local ZONES = {
+	{ zone = "SpawnZones",            models = "CommonBrainRotModels",       rarity = "Common",       inner = "CommonSpawnZone" },
+	{ zone = "SpawnZonesRare",        models = "RareBrainRotModels",         rarity = "Rare",         inner = "RareSpawnZone" },
+	{ zone = "SpawnZonesEpic",        models = "EpicBrainRotModels",         rarity = "Epic",         inner = "EpicSpawnZone" },
+	{ zone = "SpawnZonesLegendary",   models = "LegendaryBrainRotModels",    rarity = "Legendary",    inner = "LegendarySpawnZone" },
+	{ zone = "SpawnZonesMythic",      models = "MythicBrainRotModels",       rarity = "Mythic",       inner = "MythicSpawnZone" },
+	{ zone = "SpawnZonesSecret",      models = "SecretBrainRotModels",       rarity = "Secret",       inner = "SecretSpawnZone" },
+	-- { zone = "SpawnZonesBrainrotGod", models = "BrainrotGodBrainRotModels",  rarity = "Brainrot God", inner = "BrainrotGodSpawnZone" },
+}
 
-local function pickBrainrot()
+print("[Spawner] Module loaded, ZONES count:", #ZONES)
+
+-- Pre-build per-rarity brainrot pools for weighted picking
+local brainrotsByRarity = {}
+for _, entry in Brainrots do
+	if not brainrotsByRarity[entry.rarity] then
+		brainrotsByRarity[entry.rarity] = {}
+	end
+	table.insert(brainrotsByRarity[entry.rarity], entry)
+end
+
+print("[Spawner] Rarity pools built:")
+for rarity, pool in brainrotsByRarity do
+	print("  ", rarity, "->", #pool, "entries")
+end
+
+-- Per-zone runtime state, populated in initZones()
+local zoneStates = {}
+
+local function initZones()
+	print("[Spawner] initZones() called")
+
+	for i, zoneConfig in ZONES do
+		print("[Spawner] Processing zone", i, ":", zoneConfig.zone)
+
+		local folder = game.Workspace:FindFirstChild(zoneConfig.zone)
+		if not folder then
+			warn("[Spawner] FAIL: zone not found in Workspace:", zoneConfig.zone)
+			print("[Spawner]   Workspace children:")
+			for _, child in game.Workspace:GetChildren() do
+				print("    ", child.Name, "(" .. child.ClassName .. ")")
+			end
+			continue
+		end
+		print("[Spawner]   Found folder:", folder:GetFullName())
+
+		-- Count SP points
+		local spCount = 0
+		for _, child in folder:GetChildren() do
+			if child.Name:sub(1, 2) == "SP" then
+				spCount += 1
+			end
+		end
+		print("[Spawner]   SP points found:", spCount)
+		if spCount == 0 then
+			print("[Spawner]   Children of", folder.Name, ":")
+			for _, child in folder:GetChildren() do
+				print("    ", child.Name, "(" .. child.ClassName .. ")")
+			end
+		end
+
+		local models = ServerStorage:FindFirstChild(zoneConfig.models)
+		if not models then
+			warn("[Spawner] FAIL: model folder not found in ServerStorage:", zoneConfig.models)
+			print("[Spawner]   ServerStorage children:")
+			for _, child in ServerStorage:GetChildren() do
+				print("    ", child.Name, "(" .. child.ClassName .. ")")
+			end
+			continue
+		end
+		print("[Spawner]   Found models folder:", models:GetFullName(), "with", #models:GetChildren(), "models")
+		for _, model in models:GetChildren() do
+			print("    ", model.Name)
+		end
+
+		local pool = brainrotsByRarity[zoneConfig.rarity]
+		if not pool or #pool == 0 then
+			warn("[Spawner] FAIL: no Brainrots.luau entries for rarity:", zoneConfig.rarity)
+			continue
+		end
+		print("[Spawner]   Pool has", #pool, "entries for rarity:", zoneConfig.rarity)
+
+		local innerModel = folder:FindFirstChild(zoneConfig.inner)
+		if not innerModel then
+			warn("[Spawner] FAIL: inner zone not found:", zoneConfig.inner, "in", folder.Name)
+			continue
+		end
+
+		table.insert(zoneStates, {
+			folder = folder,
+			innerZone = innerModel,
+			modelsFolder = models,
+			brainrotPool = pool,
+			occupiedPoints = {},
+			rarity = zoneConfig.rarity,
+		})
+		print("[Spawner]   Zone registered OK")
+	end
+
+	print("[Spawner] initZones() done. Total active zones:", #zoneStates)
+end
+
+local function pickBrainrot(pool)
 	local totalWeight = 0
-	for _, brainrot in Brainrots do
+	for _, brainrot in pool do
 		totalWeight += brainrot.spawnWeight
 	end
 
 	local roll = math.random() * totalWeight
 	local cumulative = 0
-	for _, brainrot in Brainrots do
+	for _, brainrot in pool do
 		cumulative += brainrot.spawnWeight
 		if roll <= cumulative then
 			return brainrot
 		end
 	end
 
-	return Brainrots[1]
+	return pool[1]
 end
 
-local function getOpenPoint()
+local function getOpenPoint(state)
 	local points = {}
-	for _, child in spawnZone:GetChildren() do
-		if child.Name:sub(1, 2) == "SP" and not occupiedPoints[child] then
+	for _, child in state.innerZone:GetChildren() do
+		if child.Name:sub(1, 2) == "SP" and not state.occupiedPoints[child] then
 			table.insert(points, child)
 		end
 	end
@@ -38,9 +138,9 @@ local function getOpenPoint()
 	return points[math.random(#points)]
 end
 
-local function countSpawned()
+local function countSpawned(state)
 	local count = 0
-	for _ in occupiedPoints do
+	for _ in state.occupiedPoints do
 		count += 1
 	end
 	return count
@@ -69,23 +169,41 @@ function Spawner.startDespawnTimer(clone)
 			if elapsed >= remaining then
 				Spawner.clearPoint(clone)
 				clone:Destroy()
-				print(clone:GetAttribute("Name"), "despawned")
+				print("[Spawner]", clone:GetAttribute("Name"), "despawned")
 				return
 			end
 		end
 	end)
 end
 
-function Spawner.spawnOne()
-	if countSpawned() >= Config.MaxSpawns then return end
+function Spawner.spawnOne(state)
+	local count = countSpawned(state)
+	if count >= Config.MaxSpawns then
+		print("[Spawner] " .. state.rarity .. " at max spawns (" .. count .. "/" .. Config.MaxSpawns .. "), skipping")
+		return
+	end
 
-	local point = getOpenPoint()
-	if not point then return end
+	local point = getOpenPoint(state)
+	if not point then
+		print("[Spawner] " .. state.rarity .. " no open SP points, skipping")
+		return
+	end
 
-	local brainrotData = pickBrainrot()
-	local template = modelsFolder:FindFirstChild(brainrotData.name)
+	local brainrotData = pickBrainrot(state.brainrotPool)
+	print("[Spawner] " .. state.rarity .. " picked:", brainrotData.name)
+
+	local template = state.modelsFolder:FindFirstChild(brainrotData.name)
 	if not template then
-		warn("No model found for:", brainrotData.name)
+		warn("[Spawner] FAIL: no model for '" .. brainrotData.name .. "' in " .. state.modelsFolder.Name)
+		print("[Spawner]   Available models in " .. state.modelsFolder.Name .. ":")
+		for _, child in state.modelsFolder:GetChildren() do
+			print("    '" .. child.Name .. "'")
+		end
+		return
+	end
+
+	if not template.PrimaryPart then
+		warn("[Spawner] FAIL: model '" .. brainrotData.name .. "' has no PrimaryPart set")
 		return
 	end
 
@@ -95,11 +213,8 @@ function Spawner.spawnOne()
 	clone:SetAttribute("IncomePerSec", brainrotData.incomePerSec)
 	clone:SetAttribute("Name", brainrotData.name)
 
-	local despawnTime = math.random(Config.DespawnTimeMin, Config.DespawnTimeMax) --Config.DespawnTimes[brainrotData.rarity]
-	if despawnTime then
-		clone:SetAttribute("DespawnRemaining", despawnTime)
-	end
-
+	local despawnTime = math.random(Config.DespawnTimeMin, Config.DespawnTimeMax)
+	clone:SetAttribute("DespawnRemaining", despawnTime)
 	clone:SetAttribute("DespawnPaused", false)
 	clone.Parent = game.Workspace
 
@@ -111,8 +226,8 @@ function Spawner.spawnOne()
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = clone.PrimaryPart
 
-	occupiedPoints[point] = clone
-	print("Spawned", brainrotData.name, "at", point.Name)
+	state.occupiedPoints[point] = clone
+	print("[Spawner] Spawned", brainrotData.name, "at", point.Name, "(" .. state.rarity .. ")")
 
 	Spawner.startDespawnTimer(clone)
 	BrainrotUI.createWorldBillboard(clone, brainrotData)
@@ -121,21 +236,32 @@ function Spawner.spawnOne()
 end
 
 function Spawner.clearPoint(brainrotModel)
-	for point, model in occupiedPoints do
-		if model == brainrotModel then
-			occupiedPoints[point] = nil
-			return
+	for _, state in zoneStates do
+		for point, model in state.occupiedPoints do
+			if model == brainrotModel then
+				state.occupiedPoints[point] = nil
+				return
+			end
 		end
 	end
 end
 
 function Spawner.start()
-	task.spawn(function()
-		while true do
-			Spawner.spawnOne()
-			task.wait(Config.SpawnInterval)
-		end
-	end)
+	print("[Spawner] start() called")
+	initZones()
+	if #zoneStates == 0 then
+		warn("[Spawner] No zones initialized! Nothing will spawn.")
+		return
+	end
+	for _, state in zoneStates do
+		print("[Spawner] Starting spawn loop for:", state.rarity)
+		task.spawn(function()
+			while true do
+				Spawner.spawnOne(state)
+				task.wait(Config.SpawnInterval)
+			end
+		end)
+	end
 end
 
 return Spawner

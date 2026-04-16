@@ -7,6 +7,10 @@ local Base = {}
 local bases = game.Workspace.Map.Bases
 local claimedBases = {}
 
+function Base.getPlayerBase(player)
+	return claimedBases[player]
+end
+
 local function createBaseSign(base, player)
 	local sign = base:FindFirstChild("Sign")
 	if not sign then return end

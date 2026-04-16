@@ -5,10 +5,7 @@ local RunService = game:GetService("RunService")
 
 local Remotes = {}
 
-local remoteNames = {
-	"BaseAssigned",    -- server → client: tells client which base they got
-	"CollectSlot",     -- client → server: player clicked a CollectButton
-}
+local remoteNames = { "BaseAssigned", "CollectSlot", "TeleportHomeEvent" }
 
 if RunService:IsServer() then
 	-- Server creates the folder and remotes
