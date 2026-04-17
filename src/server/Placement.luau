@@ -9,6 +9,13 @@ local Placement = {}
 
 local ServerStorage = game:GetService("ServerStorage")
 
+-- CALLBACK (data save hook)
+local onDataChangedCallback = nil
+
+function Placement.onDataChanged(cb)
+	onDataChangedCallback = cb
+end
+
 local modelFolders = {
 	Common    = ServerStorage:WaitForChild("CommonBrainRotModels"),
 	Rare      = ServerStorage:WaitForChild("RareBrainRotModels"),
@@ -17,6 +24,7 @@ local modelFolders = {
 	Mythic    = ServerStorage:WaitForChild("MythicBrainRotModels"),
 	Secret    = ServerStorage:WaitForChild("SecretBrainRotModels"),
 }
+
 local bases = game.Workspace.Map.Bases
 
 local function isSlotOccupied(slot)
@@ -28,7 +36,6 @@ local function isSlotOccupied(slot)
 	return false
 end
 
--- minimal helper: attachment-based prompt anchoring
 local function createPromptAttachment(parentPart, name, yOffset)
 	local att = Instance.new("Attachment")
 	att.Name = name
@@ -70,21 +77,19 @@ function Placement.setup()
 				local rarity = tool:GetAttribute("Rarity")
 				local incomePerSec = tool:GetAttribute("IncomePerSec")
 
-				print("[Placement] Attempting place:", name, "rarity:", rarity, "income:", incomePerSec)
-
 				local folder = modelFolders[rarity]
-				if not folder then
-					warn("[Placement] No folder for rarity:", rarity)
-					return
-				end
+				if not folder then return end
 
 				local template = folder:FindFirstChild(name)
-				if not template then
-					warn("[Placement] No template for '" .. tostring(name) .. "' in", folder.Name)
+				if not template then return end
+
+				local clone = template:Clone()
+
+				if not clone.PrimaryPart then
+					warn("[Placement] Missing PrimaryPart:", name)
 					return
 				end
 
-				local clone = template:Clone()
 				clone:SetAttribute("Name", name)
 				clone:SetAttribute("Rarity", rarity)
 				clone:SetAttribute("IncomePerSec", incomePerSec)
@@ -120,51 +125,40 @@ function Placement.setup()
 					incomePerSec = incomePerSec,
 				})
 
-				-- Pick up prompt (E)
+				-- PICKUP
 				local pickupPrompt = Instance.new("ProximityPrompt")
 				pickupPrompt.ActionText = "Pick Up"
 				pickupPrompt.ObjectText = name
 				pickupPrompt.HoldDuration = Config.PickupHoldDuration
-				pickupPrompt.MaxActivationDistance = 8
-				pickupPrompt.RequiresLineOfSight = false
-
-				local pickupAttachment = createPromptAttachment(clone.PrimaryPart, "PickupAttachment", 2.5)
-				pickupPrompt.Parent = pickupAttachment
+				pickupPrompt.Parent = createPromptAttachment(clone.PrimaryPart, "PickupAttachment", 2.5)
 
 				pickupPrompt.Triggered:Connect(function(triggerPlayer)
 					if Base.getOwner(base) ~= triggerPlayer then return end
 					if Pickup.isCarrying(triggerPlayer) then return end
 
-					local success = Pickup.giveItem(
-						triggerPlayer,
-						clone:GetAttribute("Name"),
-						clone:GetAttribute("Rarity"),
-						clone:GetAttribute("IncomePerSec")
-					)
-
+					local success = Pickup.giveItem(triggerPlayer, name, rarity, incomePerSec)
 					if not success then return end
 
 					clone:Destroy()
+
+					if onDataChangedCallback then
+						onDataChangedCallback(triggerPlayer)
+					end
+
 					Placement.refreshPrompts(triggerPlayer)
-					print(triggerPlayer.Name, "picked up", name, "from", slot.Name)
 				end)
 
-				-- Sell prompt (F)
+				-- SELL
 				local sellPrompt = Instance.new("ProximityPrompt")
 				sellPrompt.ActionText = "Sell"
 				sellPrompt.ObjectText = "$" .. (incomePerSec * 10)
 				sellPrompt.HoldDuration = Config.PickupHoldDuration + 0.05
-				sellPrompt.MaxActivationDistance = 8
-				sellPrompt.RequiresLineOfSight = false
-				sellPrompt.KeyboardKeyCode = Enum.KeyCode.F
-
-				local sellAttachment = createPromptAttachment(clone.PrimaryPart, "SellAttachment", 6)
-				sellPrompt.Parent = sellAttachment
+				sellPrompt.Parent = createPromptAttachment(clone.PrimaryPart, "SellAttachment", 6)
 
 				sellPrompt.Triggered:Connect(function(triggerPlayer)
 					if Base.getOwner(base) ~= triggerPlayer then return end
 
-					local sellValue = clone:GetAttribute("IncomePerSec") * 10
+					local sellValue = incomePerSec * 10
 					local stats = triggerPlayer:FindFirstChild("leaderstats")
 					if stats then
 						local money = stats:FindFirstChild("Money")
@@ -174,20 +168,13 @@ function Placement.setup()
 					end
 
 					slot:SetAttribute("AccumulatedCash", 0)
-					local cb = slot:FindFirstChild("CollectButton")
-					if cb then
-						local billboard = cb:FindFirstChild("CashDisplay")
-						if billboard then
-							local label = billboard:FindFirstChild("Amount")
-							if label then
-								label.Text = "$0"
-							end
-						end
+					clone:Destroy()
+
+					if onDataChangedCallback then
+						onDataChangedCallback(triggerPlayer)
 					end
 
-					clone:Destroy()
 					Placement.refreshPrompts(triggerPlayer)
-					print(triggerPlayer.Name, "sold", name, "for $" .. sellValue)
 				end)
 
 				Pickup.removeFromInventory(player, tool)
@@ -196,7 +183,11 @@ function Placement.setup()
 				prompt.Enabled = false
 				Placement.refreshPrompts(player)
 
-				print(player.Name, "placed", name, "on", slot.Name)
+				if onDataChangedCallback then
+					onDataChangedCallback(player)
+				end
+
+				print(player.Name, "placed", name)
 			end)
 		end
 	end
@@ -226,9 +217,8 @@ function Placement.refreshPrompts(player)
 		local prompt = point:FindFirstChildOfClass("ProximityPrompt")
 		if not prompt then continue end
 
-		local occupied = isSlotOccupied(slot)
-		prompt.Enabled = Pickup.isItemEquipped(player) and not occupied
+		prompt.Enabled = Pickup.isItemEquipped(player) and not isSlotOccupied(slot)
 	end
 end
 
-return Placement
+return Placement 

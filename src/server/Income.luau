@@ -6,6 +6,12 @@ local Util = require(game.ReplicatedStorage.Util)
 
 local Income = {}
 
+local onDataChangedCallback = nil
+
+function Income.onDataChanged(cb)
+	onDataChangedCallback = cb
+end
+
 local bases = game.Workspace.Map.Bases
 
 local function getPlacedBrainrot(slot)
@@ -31,15 +37,17 @@ local function createBillboard(collectButton)
 	label.BackgroundTransparency = 1
 	label.TextColor3 = Color3.fromRGB(255, 255, 255)
 	label.TextStrokeTransparency = 1
+
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = Color3.fromRGB(0, 0, 0)
 	stroke.Thickness = 3
 	stroke.Parent = label
+
 	label.TextScaled = true
 	label.Font = Enum.Font.LuckiestGuy
 	label.Text = "$0"
-	label.Parent = surface
 	label.Rotation = 90
+	label.Parent = surface
 
 	return surface
 end
@@ -66,15 +74,14 @@ function Income.setup()
 			local collectButton = slot:FindFirstChild("CollectButton")
 			if not collectButton then continue end
 
-			createBillboard(collectButton)
+			if not collectButton:FindFirstChild("CashDisplay") then
+				createBillboard(collectButton)
+			end
 
 			collectButton.Touched:Connect(function(hit)
 				local character = hit.Parent
-				if not character then return end
-
 				local player = Players:GetPlayerFromCharacter(character)
 				if not player then return end
-
 				if Base.getOwner(base) ~= player then return end
 
 				local accumulated = slot:GetAttribute("AccumulatedCash") or 0
@@ -82,6 +89,7 @@ function Income.setup()
 
 				local stats = player:FindFirstChild("leaderstats")
 				if not stats then return end
+
 				local money = stats:FindFirstChild("Money")
 				if not money then return end
 
@@ -90,6 +98,10 @@ function Income.setup()
 				updateBillboard(collectButton, 0)
 
 				Remotes.CollectSlot:FireClient(player)
+
+				if onDataChangedCallback then
+					onDataChangedCallback(player)
+				end
 			end)
 		end
 	end
@@ -134,6 +146,7 @@ function Income.start()
 							incomeStat.Value = totalIncome
 						end
 					end
+
 					Base.updateSignIncome(base, Util.formatMoney(totalIncome) .. "/s")
 				end
 			end
