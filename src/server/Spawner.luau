@@ -13,7 +13,7 @@ local ZONES = {
 	{ zone = "SpawnZonesLegendary",   models = "LegendaryBrainRotModels",    rarity = "Legendary",    inner = "LegendarySpawnZone" },
 	{ zone = "SpawnZonesMythic",      models = "MythicBrainRotModels",       rarity = "Mythic",       inner = "MythicSpawnZone" },
 	{ zone = "SpawnZonesSecret",      models = "SecretBrainRotModels",       rarity = "Secret",       inner = "SecretSpawnZone" },
-	-- { zone = "SpawnZonesBrainrotGod", models = "BrainrotGodBrainRotModels",  rarity = "Brainrot God", inner = "BrainrotGodSpawnZone" },
+	-- { zone = "SpawnZonesDivine",   models = "DivineBrainRotModels",   	 rarity = "Divine", 	  inner = "DivineSpawnZone" },
 }
 
 print("[Spawner] Module loaded, ZONES count:", #ZONES)
