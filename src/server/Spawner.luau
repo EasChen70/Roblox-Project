@@ -13,12 +13,11 @@ local ZONES = {
 	{ zone = "SpawnZonesLegendary",   models = "LegendaryBrainRotModels",    rarity = "Legendary",    inner = "LegendarySpawnZone" },
 	{ zone = "SpawnZonesMythic",      models = "MythicBrainRotModels",       rarity = "Mythic",       inner = "MythicSpawnZone" },
 	{ zone = "SpawnZonesSecret",      models = "SecretBrainRotModels",       rarity = "Secret",       inner = "SecretSpawnZone" },
-	-- { zone = "SpawnZonesDivine",   models = "DivineBrainRotModels",   	 rarity = "Divine", 	  inner = "DivineSpawnZone" },
+	-- { zone = "SpawnZonesDivine",   models = "DivineBrainRotModels",       rarity = "Divine",       inner = "DivineSpawnZone" },
 }
 
 print("[Spawner] Module loaded, ZONES count:", #ZONES)
 
--- Pre-build per-rarity brainrot pools for weighted picking
 local brainrotsByRarity = {}
 for _, entry in Brainrots do
 	if not brainrotsByRarity[entry.rarity] then
@@ -32,8 +31,15 @@ for rarity, pool in brainrotsByRarity do
 	print("  ", rarity, "->", #pool, "entries")
 end
 
--- Per-zone runtime state, populated in initZones()
 local zoneStates = {}
+
+-- Grab callback — registered by Pickup via Spawner.onGrab()
+-- Eliminates DescendantAdded connection leak (no longer watching Workspace)
+local onGrabCallback = nil
+
+function Spawner.onGrab(cb)
+	onGrabCallback = cb
+end
 
 local function initZones()
 	print("[Spawner] initZones() called")
@@ -44,20 +50,13 @@ local function initZones()
 		local folder = game.Workspace:FindFirstChild(zoneConfig.zone)
 		if not folder then
 			warn("[Spawner] FAIL: zone not found in Workspace:", zoneConfig.zone)
-			print("[Spawner]   Workspace children:")
-			for _, child in game.Workspace:GetChildren() do
-				print("    ", child.Name, "(" .. child.ClassName .. ")")
-			end
 			continue
 		end
 		print("[Spawner]   Found folder:", folder:GetFullName())
 
-		-- Count SP points
 		local spCount = 0
 		for _, child in folder:GetChildren() do
-			if child.Name:sub(1, 2) == "SP" then
-				spCount += 1
-			end
+			if child.Name:sub(1, 2) == "SP" then spCount += 1 end
 		end
 		print("[Spawner]   SP points found:", spCount)
 		if spCount == 0 then
@@ -70,10 +69,6 @@ local function initZones()
 		local models = ServerStorage:FindFirstChild(zoneConfig.models)
 		if not models then
 			warn("[Spawner] FAIL: model folder not found in ServerStorage:", zoneConfig.models)
-			print("[Spawner]   ServerStorage children:")
-			for _, child in ServerStorage:GetChildren() do
-				print("    ", child.Name, "(" .. child.ClassName .. ")")
-			end
 			continue
 		end
 		print("[Spawner]   Found models folder:", models:GetFullName(), "with", #models:GetChildren(), "models")
@@ -195,10 +190,6 @@ function Spawner.spawnOne(state)
 	local template = state.modelsFolder:FindFirstChild(brainrotData.name)
 	if not template then
 		warn("[Spawner] FAIL: no model for '" .. brainrotData.name .. "' in " .. state.modelsFolder.Name)
-		print("[Spawner]   Available models in " .. state.modelsFolder.Name .. ":")
-		for _, child in state.modelsFolder:GetChildren() do
-			print("    '" .. child.Name .. "'")
-		end
 		return
 	end
 
@@ -225,6 +216,15 @@ function Spawner.spawnOne(state)
 	prompt.MaxActivationDistance = Config.PickupRange
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = clone.PrimaryPart
+
+	-- Connect grab directly here — no DescendantAdded needed
+	prompt.Triggered:Connect(function(player)
+		if not onGrabCallback then
+			warn("[Spawner] Grab triggered but no onGrab callback registered")
+			return
+		end
+		onGrabCallback(player, clone)
+	end)
 
 	state.occupiedPoints[point] = clone
 	print("[Spawner] Spawned", brainrotData.name, "at", point.Name, "(" .. state.rarity .. ")")

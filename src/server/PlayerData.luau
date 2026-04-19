@@ -1,8 +1,8 @@
 --Services
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
-local ServerStorage = game:getService("ServerStorage")
-local ReplicatedStorage = game:getService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 --Shared Modules
@@ -21,31 +21,25 @@ local PlayerData = {}
 -----CONFIG/CONSTANTS-----
 local DATA_STORE_NAME = "BrainrotCannonV1"
 
---Versioning system (lets us evolve save format safely later on)
 local CURRENT_VERSION = 1
 
---Locks (for session locks)
-local LOCK_EXPIRY = 60 --expires after 60s
-local LOCK_REFRESH = 30 --refresh lock every 30s
+local LOCK_EXPIRY = 60
+local LOCK_REFRESH = 30
 
---Autosave system
 local AUTOSAVE_INTERVAL = 60
-local SAVE_THROTTLE = 6 --minimum seconds between saves
+local SAVE_THROTTLE = 6
 
---Retry system (for pcalls)
 local MAX_RETRIES = 3
-local RETRY_DELAYS = {1, 2, 4} --exponential backoff (gives system time to recover)
+local RETRY_DELAYS = {1, 2, 4}
 
 local dataStore = DataStoreService:GetDataStore(DATA_STORE_NAME)
 
 -----RUNTIME STATE-----
---Live data
-local sessionData = {} -- player → data table
-local sessionBase = {} -- player → base reference
-local lastSave = {} -- player → last save timestamp
-local lockThreads = {} -- player → lock refresh thread
+local sessionData = {}
+local sessionBase = {}
+local lastSave = {}
+local lockThreads = {}
 
--- Model Storage for rebuilding placed items
 local modelFolders = {
 	Common    = ServerStorage:WaitForChild("CommonBrainRotModels"),
 	Rare      = ServerStorage:WaitForChild("RareBrainRotModels"),
@@ -59,31 +53,26 @@ local migrations = {}
 
 -----HELPERS-----
 
---Create brand new save file for new player
 local function createDefault()
-    return {
-        version = CURRENT_VERSION,
-        money = 0,
-        rebirths = 0,
-        cannonPower = 0,
-        slots = {},
-        inventory = {},
-    }
+	return {
+		version = CURRENT_VERSION,
+		money = 0,
+		rebirths = 0,
+		cannonPower = 0,
+		slots = {},
+		inventory = {},
+	}
 end
 
---Unique key per player in DataStore
 local function getKey(player)
-    return "player_" .. player.UserId
+	return "player_" .. player.UserId
 end
 
---Runs migrations if save version is outdated
 local function runMigrations(data)
-    if not data.version then data.version = 1 end
+	if not data.version then data.version = 1 end
 
-	-- If data is newer than your code → reject (rare but important)
 	if data.version > CURRENT_VERSION then return nil end
 
-	-- Apply each migration step
 	for v = data.version + 1, CURRENT_VERSION do
 		if migrations[v] then
 			local ok, result = pcall(migrations[v], data)
@@ -97,24 +86,22 @@ local function runMigrations(data)
 
 	data.version = CURRENT_VERSION
 	return data
-end    
+end
 
--- Retries DataStore operations
 local function retryAsync(func)
-    for i = 1, MAX_RETRIES do 
-        local ok, result = pcall(func)
-        if ok then 
-            return true, result 
-        end
-        warn("[PlayerData] Attempt", i, "failed:", result)
-        if i < MAX_RETRIES then 
-            task.wait(RETRY_DELAYS[i])
-        end 
-    end
-    return false, nil
-end 
+	for i = 1, MAX_RETRIES do
+		local ok, result = pcall(func)
+		if ok then
+			return true, result
+		end
+		warn("[PlayerData] Attempt", i, "failed:", result)
+		if i < MAX_RETRIES then
+			task.wait(RETRY_DELAYS[i])
+		end
+	end
+	return false, nil
+end
 
--- Lookup income from Brainrots
 local function getIncomeFromRegistry(name)
 	for _, entry in Brainrots do
 		if entry.name == name then
@@ -124,28 +111,21 @@ local function getIncomeFromRegistry(name)
 	return 0
 end
 
--- Count occupied slots in save data
 function PlayerData.countSlots(slots)
-    local count = 0
-    for _ in slots do count += 1 end
-    return count
+	local count = 0
+	for _ in slots do count += 1 end
+	return count
 end
 
 -----READ CURRENT GAME STATE-----
 
---Read placed brainrots from base to savable format
 local function readSlots(player)
 	local slots = {}
 
-	-- Use stored base OR fallback to live lookup
 	local base = sessionBase[player] or Base.getPlayerBase(player)
-    if not base then 
-        return slots 
-    end
+	if not base then return slots end
 	local slotsFolder = base:FindFirstChild("Slots")
-	if not slotsFolder then
-        return slots 
-    end
+	if not slotsFolder then return slots end
 
 	for i = 1, Config.MaxSlots do
 		local slot = slotsFolder:FindFirstChild("Slot" .. i)
@@ -162,11 +142,9 @@ local function readSlots(player)
 			end
 		end
 	end
-	return slots    
-end 
+	return slots
+end
 
-
--- Reads ALL live player data (money, rebirths, slots)
 local function readLiveState(player, data)
 	local leaderstats = player:FindFirstChild("leaderstats")
 
@@ -174,39 +152,39 @@ local function readLiveState(player, data)
 		local money = leaderstats:FindFirstChild("Money")
 		local rebirths = leaderstats:FindFirstChild("Rebirths")
 
-		if money then 
-            data.money = money.Value 
-        end
-		if rebirths then 
-            data.rebirths = rebirths.Value 
-        end
+		if money then data.money = money.Value end
+		if rebirths then data.rebirths = rebirths.Value end
 	end
 
 	data.slots = readSlots(player)
-    data.inventory = {}
-    local items = Pickup.getInventory(player)
-    for _, tool in items do
-        if tool then
-            table.insert(data.inventory, {
-                name = tool.Name,
-                rarity = tool:GetAttribute("Rarity"),
-            })
-        end
-    end    
+	data.inventory = {}
+	local items = Pickup.getInventory(player)
+	
+	print("[PlayerData] Reading inventory for save, count:", #items)  -- ADD THIS
+	
+	for _, tool in items do
+		if tool then
+			table.insert(data.inventory, {
+				name = tool.Name,
+				rarity = tool:GetAttribute("Rarity"),
+			})
+			print("[PlayerData]   - Saving:", tool.Name, tool:GetAttribute("Rarity"))  -- ADD THIS
+		end
+	end
+	
+	print("[PlayerData] Final inventory save count:", #data.inventory)  -- ADD THIS
 end
 
------LOAD SYSTEM (session locked)-----
+-----LOAD SYSTEM-----
 function PlayerData.load(player)
 	local key = getKey(player)
 
-	-- Wait for leaderstats (important dependency)
 	local leaderstats = player:WaitForChild("leaderstats", 10)
 	if not leaderstats then
 		player:Kick("Data failed to load — rejoin")
 		return
 	end
 
-	-- Wait for base assignment
 	local base = nil
 	local waitStart = tick()
 
@@ -217,14 +195,11 @@ function PlayerData.load(player)
 
 	if not player.Parent then return end
 
-	-- LOCK SYSTEM using UpdateAsync
 	local wasLocked = false
 	local loadedData = nil
 
 	local success = retryAsync(function()
 		dataStore:UpdateAsync(key, function(current)
-
-			-- If another server owns lock → reject
 			if current and current.lockJobId and current.lockJobId ~= game.JobId then
 				if os.time() - (current.lockTimestamp or 0) < LOCK_EXPIRY then
 					wasLocked = true
@@ -232,10 +207,8 @@ function PlayerData.load(player)
 				end
 			end
 
-			-- Either existing data OR new default
 			local data = current or createDefault()
 
-			-- Acquire lock
 			data.lockJobId = game.JobId
 			data.lockTimestamp = os.time()
 
@@ -251,42 +224,42 @@ function PlayerData.load(player)
 		return
 	end
 
-	-- Apply migrations
 	loadedData = runMigrations(loadedData)
 	if not loadedData then
 		player:Kick("Version mismatch")
 		return
 	end
 
-	-- Store session
 	sessionData[player] = loadedData
 	sessionBase[player] = base
 	lastSave[player] = tick()
 
-	-- Apply to UI
 	leaderstats.Money.Value = loadedData.money or 0
 	leaderstats.Rebirths.Value = loadedData.rebirths or 0
 
 	print("[PlayerData] Loaded", player.Name, "— Money:", loadedData.money, "Slots:", PlayerData.countSlots(loadedData.slots or {}), "Inventory:", #(loadedData.inventory or {}))
 
-	-- Rebuild placed brainrots
 	if base and loadedData.slots then
 		PlayerData.hydrateSlots(player, base, loadedData.slots)
 	end
 
-    -- Inventory rebuild
-    if loadedData.inventory then
-        for _, itemData in loadedData.inventory do
-            local income = getIncomeFromRegistry(itemData.name)
-            Pickup.giveItem(player, itemData.name, itemData.rarity, income)
-        end
-        if #loadedData.inventory > 0 then
-            print("[PlayerData] Restored", #loadedData.inventory, "inventory items for", player.Name)
-        end
-    end
-    
+	if loadedData.inventory then
+		-- Wait for character to be ready so hotbar UI can receive Tools
+		if not player.Character then
+			player.CharacterAdded:Wait()
+		end
+		task.wait(0.5)  -- Give client hotbar a moment to initialize
+		
+		for _, itemData in loadedData.inventory do
+			local income = getIncomeFromRegistry(itemData.name)
+			Pickup.giveItem(player, itemData.name, itemData.rarity, income)
+			task.wait(0.05)  -- Small stagger between Tool creation to let client catch up
+		end
+		if #loadedData.inventory > 0 then
+			print("[PlayerData] Restored", #loadedData.inventory, "inventory items for", player.Name)
+		end
+	end
 
-	-- LOCK REFRESH LOOP (keeps ownership)
 	lockThreads[player] = task.spawn(function()
 		while player.Parent do
 			task.wait(LOCK_REFRESH)
@@ -303,7 +276,8 @@ function PlayerData.load(player)
 		end
 	end)
 end
------HYDRATE(rebuild)-----
+
+-----HYDRATE (rebuild)-----
 function PlayerData.hydrateSlots(player, base, slots)
 	local slotsFolder = base:FindFirstChild("Slots")
 	if not slotsFolder then return end
@@ -329,7 +303,6 @@ function PlayerData.hydrateSlots(player, base, slots)
 
 		local incomePerSec = getIncomeFromRegistry(slotData.name)
 
-		-- Clone + anchor
 		local ok, clone = pcall(function()
 			local c = template:Clone()
 			c:SetAttribute("Name", slotData.name)
@@ -351,7 +324,6 @@ function PlayerData.hydrateSlots(player, base, slots)
 			continue
 		end
 
-		-- Position (matches Placement.luau logic)
 		local collectButton = slot:FindFirstChild("CollectButton")
 		local spawnPos = point.Position + Vector3.new(0, Config.PlacementYOffset, 0)
 
@@ -364,10 +336,8 @@ function PlayerData.hydrateSlots(player, base, slots)
 
 		clone.Parent = slot
 
-		-- Restore accumulated cash
 		slot:SetAttribute("AccumulatedCash", slotData.accumulatedCash or 0)
 
-		-- Update CollectButton display
 		if collectButton then
 			local billboard = collectButton:FindFirstChild("CashDisplay")
 			if billboard then
@@ -378,103 +348,39 @@ function PlayerData.hydrateSlots(player, base, slots)
 			end
 		end
 
-		-- Billboard
 		BrainrotUI.createBillboard(clone, {
 			name = slotData.name,
 			rarity = slotData.rarity,
 			incomePerSec = incomePerSec,
 		})
 
-		-- Pick Up prompt (E)
-		local pickupAtt = Instance.new("Attachment")
-		pickupAtt.Name = "PickupAttachment"
-		pickupAtt.Position = Vector3.new(0, 2.5, 0)
-		pickupAtt.Parent = clone.PrimaryPart
-
-		local pickupPrompt = Instance.new("ProximityPrompt")
-		pickupPrompt.ActionText = "Pick Up"
-		pickupPrompt.ObjectText = slotData.name
-		pickupPrompt.HoldDuration = Config.PickupHoldDuration
-		pickupPrompt.MaxActivationDistance = 8
-		pickupPrompt.RequiresLineOfSight = false
-		pickupPrompt.Parent = pickupAtt
-
-		pickupPrompt.Triggered:Connect(function(triggerPlayer)
-			if Base.getOwner(base) ~= triggerPlayer then return end
-			if Pickup.isCarrying(triggerPlayer) then return end
-
-			local giveOk = Pickup.giveItem(triggerPlayer, slotData.name, slotData.rarity, incomePerSec)
-			if not giveOk then return end
-
-			clone:Destroy()
-			Placement.refreshPrompts(triggerPlayer)
-			PlayerData.save(triggerPlayer)
-			print(triggerPlayer.Name, "picked up", slotData.name, "from", slot.Name, "(loaded)")
-		end)
-
-		-- Sell prompt (F)
-		local sellAtt = Instance.new("Attachment")
-		sellAtt.Name = "SellAttachment"
-		sellAtt.Position = Vector3.new(0, 6, 0)
-		sellAtt.Parent = clone.PrimaryPart
-
-		local sellPrompt = Instance.new("ProximityPrompt")
-		sellPrompt.ActionText = "Sell"
-		sellPrompt.ObjectText = "$" .. (incomePerSec * 10)
-		sellPrompt.HoldDuration = Config.PickupHoldDuration + 0.05
-		sellPrompt.MaxActivationDistance = 8
-		sellPrompt.RequiresLineOfSight = false
-		sellPrompt.KeyboardKeyCode = Enum.KeyCode.F
-		sellPrompt.Parent = sellAtt
-
-		sellPrompt.Triggered:Connect(function(triggerPlayer)
-			if Base.getOwner(base) ~= triggerPlayer then return end
-
-			local sellValue = incomePerSec * 10
-			local stats = triggerPlayer:FindFirstChild("leaderstats")
-			if stats then
-				local money = stats:FindFirstChild("Money")
-				if money then money.Value += sellValue end
-			end
-
-			slot:SetAttribute("AccumulatedCash", 0)
-			local cb = slot:FindFirstChild("CollectButton")
-			if cb then
-				local bd = cb:FindFirstChild("CashDisplay")
-				if bd then
-					local lbl = bd:FindFirstChild("Amount")
-					if lbl then lbl.Text = "$0" end
-				end
-			end
-
-			clone:Destroy()
-			Placement.refreshPrompts(triggerPlayer)
-			PlayerData.save(triggerPlayer)
-			print(triggerPlayer.Name, "sold", slotData.name, "for $" .. sellValue, "(loaded)")
-		end)
+		-- Prompts handled by shared helper — no duplication
+		Placement.createSlotPrompts(clone, slot, base, {
+			name = slotData.name,
+			rarity = slotData.rarity,
+			incomePerSec = incomePerSec,
+		})
 
 		print("[PlayerData] Hydrated Slot" .. slotIndex .. ":", slotData.name)
 	end
 end
+
 -----SAVE SYSTEM-----
 function PlayerData.save(player)
 	if not sessionData[player] then return end
 
-	-- Prevent spam saving
 	local now = tick()
 	if lastSave[player] and (now - lastSave[player]) < SAVE_THROTTLE then return end
 	lastSave[player] = now
 
 	local data = sessionData[player]
 
-	-- Pull current game state into save data
 	readLiveState(player, data)
 
 	local key = getKey(player)
 
 	local success = retryAsync(function()
 		dataStore:UpdateAsync(key, function()
-			-- Maintain lock
 			data.lockJobId = game.JobId
 			data.lockTimestamp = os.time()
 			data.version = CURRENT_VERSION
@@ -497,7 +403,6 @@ local function forceSave(player)
 
 	readLiveState(player, data)
 
-	-- IMPORTANT: remove lock so next server can load
 	data.lockJobId = nil
 	data.lockTimestamp = nil
 	data.version = CURRENT_VERSION
@@ -513,16 +418,13 @@ end
 
 -----CLEAN UP-----
 local function clearSession(player)
-	-- Stop lock thread
 	if lockThreads[player] then
 		task.cancel(lockThreads[player])
 		lockThreads[player] = nil
 	end
 
-	-- Final save
 	forceSave(player)
 
-	-- Clear memory
 	sessionData[player] = nil
 	sessionBase[player] = nil
 	lastSave[player] = nil
@@ -530,13 +432,11 @@ local function clearSession(player)
 	print("[PlayerData] Session cleared", player.Name)
 end
 
------LIFECYCLE/ORCHESTRATION-----
+-----LIFECYCLE-----
 
 function PlayerData.setup()
-	-- Save when player leaves
 	Players.PlayerRemoving:Connect(clearSession)
 
-	-- Save when server shuts down
 	game:BindToClose(function()
 		for _, player in Players:GetPlayers() do
 			pcall(clearSession, player)
@@ -545,7 +445,6 @@ function PlayerData.setup()
 end
 
 function PlayerData.start()
-	-- Autosave loop
 	task.spawn(function()
 		while true do
 			task.wait(AUTOSAVE_INTERVAL)
@@ -556,12 +455,10 @@ function PlayerData.start()
 		end
 	end)
 
-	-- Load on join
 	Players.PlayerAdded:Connect(function(player)
 		PlayerData.load(player)
 	end)
 
-	-- Studio support
 	for _, player in Players:GetPlayers() do
 		task.spawn(function()
 			PlayerData.load(player)

@@ -1,18 +1,21 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
+
 local Config = require(ReplicatedStorage.Config)
 local Spawner = require(game.ServerScriptService.Spawner)
 local BrainrotUI = require(game.ReplicatedStorage.BrainrotUI)
 
 local Pickup = {}
 
-local carrying = {}
-local inventory = {} -- player → array of Tools
-local carryTracks = {} -- player → AnimationTrack (state 1: grabbed from world)
+local carrying = {}          -- player → Model (world visual while grabbed)
+local inventory = {}         -- player → Tool[]
+local equipped = {}          -- player → Tool (currently equipped, tracked server-side)
+local carryTracks = {}       -- player → AnimationTrack
+local inventorySnapshot = {} -- respawn restore
+
 local onStashCallback = nil
 local onEquipCallback = nil
-
-local ServerStorage = game:GetService("ServerStorage")
 
 local modelFolders = {
 	Common    = ServerStorage:WaitForChild("CommonBrainRotModels"),
@@ -23,20 +26,28 @@ local modelFolders = {
 	Secret    = ServerStorage:WaitForChild("SecretBrainRotModels"),
 }
 
+------------------------------------------------
+-- Animation
+------------------------------------------------
+
 local function startCarryAnim(player)
 	local character = player.Character
 	if not character then return nil end
+
 	local humanoid = character:FindFirstChild("Humanoid")
 	if not humanoid then return nil end
+
 	local animator = humanoid:FindFirstChildOfClass("Animator")
 	if not animator then return nil end
 
-	local carryAnim = Instance.new("Animation")
-	carryAnim.AnimationId = Config.CarryAnimationId
-	local track = animator:LoadAnimation(carryAnim)
+	local anim = Instance.new("Animation")
+	anim.AnimationId = Config.CarryAnimationId
+
+	local track = animator:LoadAnimation(anim)
 	track.Priority = Enum.AnimationPriority.Action
 	track.Looped = true
 	track:Play()
+
 	return track
 end
 
@@ -48,12 +59,16 @@ local function stopCarryAnim(track)
 	end
 end
 
-function Pickup.onStash(callback)
-	onStashCallback = callback
+------------------------------------------------
+-- API
+------------------------------------------------
+
+function Pickup.onStash(cb)
+	onStashCallback = cb
 end
 
-function Pickup.onEquipChanged(callback)
-	onEquipCallback = callback
+function Pickup.onEquipChanged(cb)
+	onEquipCallback = cb
 end
 
 function Pickup.isCarrying(player)
@@ -65,25 +80,18 @@ function Pickup.getInventory(player)
 end
 
 function Pickup.getInventoryTool(player)
-	local items = inventory[player]
-	if not items then return nil end
-	local character = player.Character
-	for _, tool in items do
-		if character and tool.Parent == character then
-			return tool
-		end
-	end
-	return nil
+	return equipped[player]
 end
 
 function Pickup.isItemEquipped(player)
-	return Pickup.getInventoryTool(player) ~= nil
+	return equipped[player] ~= nil
 end
 
 function Pickup.removeFromInventory(player, tool)
 	local items = inventory[player]
 	if not items then return end
-	for i, t in items do
+
+	for i, t in ipairs(items) do
 		if t == tool then
 			table.remove(items, i)
 			return
@@ -91,47 +99,79 @@ function Pickup.removeFromInventory(player, tool)
 	end
 end
 
+------------------------------------------------
+-- Tool creation
+------------------------------------------------
+
 local function createBrainrotTool(player, data)
 	local tool = Instance.new("Tool")
 	tool.Name = data.name
 	tool.CanBeDropped = false
-	tool.RequiresHandle = false
+	tool.RequiresHandle = true
+
 	tool:SetAttribute("Rarity", data.rarity)
 	tool:SetAttribute("IncomePerSec", data.incomePerSec)
 	tool:SetAttribute("BrainrotTool", true)
 
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(0.2, 0.2, 0.2)
+	handle.Transparency = 1
+	handle.CanCollide = false
+	handle.Anchored = false
+	handle.Parent = tool
+
+	-- ADD THIS DEBUG
+	print("[Pickup] Created tool:", data.name, "RequiresHandle:", tool.RequiresHandle, "Handle exists:", tool:FindFirstChild("Handle") ~= nil)
+
 	local folder = modelFolders[data.rarity]
 	local template = folder and folder:FindFirstChild(data.name)
-	local visual = nil
-	local carryTrack = nil -- state 2: Tool equipped from backpack
+
+	if not template then
+		warn("Missing model:", data.name, data.rarity)
+		return
+	end
 
 	tool.Equipped:Connect(function()
+		equipped[player] = tool
+
 		local character = player.Character
-		if not character or not template then return end
+		if not character then return end
 
 		local rootPart = character:FindFirstChild("HumanoidRootPart")
 		if not rootPart then return end
 
-		visual = template:Clone()
+		local visual = template:Clone()
+
 		visual:SetAttribute("Name", data.name)
 		visual:SetAttribute("Rarity", data.rarity)
 		visual:SetAttribute("IncomePerSec", data.incomePerSec)
 
-		for _, part in visual:GetDescendants() do
-			if part:IsA("BasePart") then
-				part.CanCollide = false
-				part.Anchored = false
-				part.Massless = true
+		if not visual.PrimaryPart then
+			visual.PrimaryPart = visual:FindFirstChildWhichIsA("BasePart")
+		end
+		if not visual.PrimaryPart then
+			warn("No PrimaryPart:", data.name)
+			return
+		end
+
+		-- Anchor + flatten physics BEFORE positioning/parenting
+		for _, p in ipairs(visual:GetDescendants()) do
+			if p:IsA("BasePart") then
+				p.Anchored = true
+				p.CanCollide = false
+				p.Massless = true
 			end
 		end
 
-		-- 1. Parent first
+		-- Position BEFORE parenting (reduces replication spike)
+		visual:PivotTo(
+			rootPart.CFrame * CFrame.new(Config.CarryOffset) * Config.CarryRotation
+		)
+
 		visual.Parent = character
 
-		-- 2. Position with PivotTo
-		visual:PivotTo(rootPart.CFrame * CFrame.new(Config.CarryOffset) * Config.CarryRotation)
-
-		-- 3. Weld all parts to PrimaryPart
+		-- Build internal welds between all non-PrimaryPart parts and PrimaryPart
 		for _, part in visual:GetDescendants() do
 			if part:IsA("BasePart") and part ~= visual.PrimaryPart then
 				local w = Instance.new("WeldConstraint")
@@ -141,11 +181,20 @@ local function createBrainrotTool(player, data)
 			end
 		end
 
-		-- 4. Weld to HumanoidRootPart AFTER positioning
+		-- Weld PrimaryPart to HRP
 		local weld = Instance.new("WeldConstraint")
 		weld.Part0 = rootPart
 		weld.Part1 = visual.PrimaryPart
 		weld.Parent = visual.PrimaryPart
+
+		-- Unanchor all parts — internal welds + HRP weld keep everything together
+		for _, p in visual:GetDescendants() do
+			if p:IsA("BasePart") then
+				p.Anchored = false
+			end
+		end
+
+		print("[Pickup] equip weld set for", data.name)
 
 		BrainrotUI.createBillboard(visual, {
 			name = data.name,
@@ -153,46 +202,53 @@ local function createBrainrotTool(player, data)
 			incomePerSec = data.incomePerSec,
 		})
 
-		-- Start carry animation for state 2
-		carryTrack = startCarryAnim(player)
+		carrying[player] = visual
+		carryTracks[player] = startCarryAnim(player)
 
 		if onEquipCallback then
-			onEquipCallback(player)
+			onEquipCallback(player, true)
 		end
+
+		print("[Pickup] equipped", data.name, "for", player.Name)
 	end)
 
 	tool.Unequipped:Connect(function()
-		if visual and visual.Parent then
-			visual:Destroy()
-			visual = nil
-		end
+		equipped[player] = nil
 
-		-- Stop carry animation for state 2
-		stopCarryAnim(carryTrack)
-		carryTrack = nil
+		local model = carrying[player]
+		if model then model:Destroy() end
+
+		carrying[player] = nil
+
+		stopCarryAnim(carryTracks[player])
+		carryTracks[player] = nil
 
 		if onEquipCallback then
-			onEquipCallback(player)
+			onEquipCallback(player, false)
 		end
+
+		print("[Pickup] unequipped for", player.Name)
 	end)
 
 	tool.Parent = player.Backpack
 
-	if not inventory[player] then
-		inventory[player] = {}
-	end
+	inventory[player] = inventory[player] or {}
 	table.insert(inventory[player], tool)
 end
 
-function Pickup.giveItem(player, name, rarity, incomePerSec)
-	if carrying[player] then return false end
-	local items = inventory[player]
-	if items and #items >= Config.MaxInventory then return false end
+------------------------------------------------
+-- Give item
+------------------------------------------------
 
-	-- Validate template exists before creating the tool
+function Pickup.giveItem(player, name, rarity, incomePerSec)
+	local items = inventory[player]
+	if items and #items >= Config.MaxInventory then
+		return false
+	end
+
 	local folder = modelFolders[rarity]
 	if not folder or not folder:FindFirstChild(name) then
-		warn("No brainrot model found for:", name, "rarity:", rarity)
+		warn("Missing brainrot:", name, rarity)
 		return false
 	end
 
@@ -201,264 +257,209 @@ function Pickup.giveItem(player, name, rarity, incomePerSec)
 		rarity = rarity,
 		incomePerSec = incomePerSec,
 	})
+
 	return true
 end
 
-function Pickup.grab(player, brainrotModel)
-	if carrying[player] then
-		warn(player.Name, "already carrying a brainrot")
-		return
-	end
+------------------------------------------------
+-- World grab (state 1: model welded directly to HRP)
+-- Called via Spawner.onGrab callback — no DescendantAdded needed
+--
+-- Ground teleport fix: anchor + Massless all parts FIRST, then
+-- PivotTo carry position, then reparent, then build internal welds,
+-- then weld to HRP, then unanchor all parts. Order matters.
+------------------------------------------------
 
-	local items = inventory[player]
-	if items and #items >= Config.MaxInventory then
-		warn(player.Name, "inventory full")
+function Pickup.grab(player, model)
+	if carrying[player] then
+		print("[Pickup] grab blocked —", player.Name, "already carrying something")
 		return
 	end
 
 	local character = player.Character
 	if not character then return end
 
-	local rootPart = character:FindFirstChild("HumanoidRootPart")
-	if not rootPart then return end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
 
-	local prompt = brainrotModel.PrimaryPart:FindFirstChildOfClass("ProximityPrompt")
+	-- Disable prompt immediately after grab check passes
+	local prompt = model.PrimaryPart:FindFirstChildOfClass("ProximityPrompt")
 	if prompt then
 		prompt.Enabled = false
 	end
 
-	brainrotModel:SetAttribute("DespawnPaused", true)
+	local name = model:GetAttribute("Name")
+	local rarity = model:GetAttribute("Rarity")
+	local incomePerSec = model:GetAttribute("IncomePerSec")
 
-	Spawner.clearPoint(brainrotModel)
-
-	for _, part in brainrotModel:GetDescendants() do
-		if part:IsA("BasePart") then
-			part.CanCollide = false
-			part.Anchored = false
+	-- Step 1: kill physics on all parts before anything else
+	-- This is what prevents the ground teleport jolt
+	local partCount = 0
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = true
+			p.CanCollide = false
+			p.Massless = true
+			partCount += 1
 		end
 	end
 
-	-- 1. Parent first
-	brainrotModel.Parent = character
+	print("[Pickup] Model part count:", partCount)
 
-	-- 2. Position with PivotTo
-	brainrotModel:PivotTo(rootPart.CFrame * CFrame.new(Config.CarryOffset) * Config.CarryRotation)
+	-- Step 2: move to carry position while still in Workspace (clean, no physics)
+	model:PivotTo(root.CFrame * CFrame.new(Config.CarryOffset) * Config.CarryRotation)
 
-	-- 3. Weld all parts to PrimaryPart
-	for _, part in brainrotModel:GetDescendants() do
-		if part:IsA("BasePart") and part ~= brainrotModel.PrimaryPart then
+	-- Step 3: reparent to character
+	model.Parent = character
+
+	-- Step 4: build internal welds between all non-PrimaryPart parts and PrimaryPart
+	-- (spawned models from Toolbox often lack these — without them, unanchored parts fall)
+	for _, part in model:GetDescendants() do
+		if part:IsA("BasePart") and part ~= model.PrimaryPart then
 			local w = Instance.new("WeldConstraint")
-			w.Part0 = brainrotModel.PrimaryPart
+			w.Part0 = model.PrimaryPart
 			w.Part1 = part
 			w.Parent = part
 		end
 	end
 
-	-- 4. Weld to HumanoidRootPart AFTER positioning
+	-- Step 5: weld PrimaryPart to HRP
 	local weld = Instance.new("WeldConstraint")
-	weld.Part0 = rootPart
-	weld.Part1 = brainrotModel.PrimaryPart
-	weld.Parent = brainrotModel.PrimaryPart
+	weld.Part0 = root
+	weld.Part1 = model.PrimaryPart
+	weld.Parent = model.PrimaryPart
 
-	carrying[player] = brainrotModel
-	print(player.Name, "grabbed", brainrotModel:GetAttribute("Name"))
-
-	-- Start carry animation for state 1
-	carryTracks[player] = startCarryAnim(player)
-
-	local oldBillboard = brainrotModel.PrimaryPart:FindFirstChild("BrainrotBillboard")
-	if oldBillboard then
-		oldBillboard:Destroy()
+	-- Step 6: unanchor all parts
+	-- Internal welds hold assembly together; HRP weld drives it
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = false
+		end
 	end
 
-	BrainrotUI.createBillboard(brainrotModel, {
-		name = brainrotModel:GetAttribute("Name"),
-		rarity = brainrotModel:GetAttribute("Rarity"),
-		incomePerSec = brainrotModel:GetAttribute("IncomePerSec"),
-	})
+	print("[Pickup] grab weld set, all parts unanchored —", model:GetAttribute("Name"), "parts:", partCount)
+
+	-- Pause despawn timer + free the spawn point
+	model:SetAttribute("DespawnPaused", true)
+	Spawner.clearPoint(model)
+
+	carrying[player] = model
+	carryTracks[player] = startCarryAnim(player)
+
+	print("[Pickup]", player.Name, "grabbed", name, "(", rarity, ")")
 end
 
-function Pickup.stash(player)
-	local brainrotModel = carrying[player]
-	if not brainrotModel then return end
+------------------------------------------------
+-- Drop / stash
+------------------------------------------------
 
-	-- Stop carry animation for state 1
+function Pickup.stash(player)
+	local model = carrying[player]
+	if not model then return end
+
 	stopCarryAnim(carryTracks[player])
 	carryTracks[player] = nil
 
 	local data = {
-		name = brainrotModel:GetAttribute("Name"),
-		rarity = brainrotModel:GetAttribute("Rarity"),
-		incomePerSec = brainrotModel:GetAttribute("IncomePerSec"),
+		name = model:GetAttribute("Name"),
+		rarity = model:GetAttribute("Rarity"),
+		incomePerSec = model:GetAttribute("IncomePerSec"),
 	}
 
-	brainrotModel:Destroy()
+	model:Destroy()
 	carrying[player] = nil
 
 	createBrainrotTool(player, data)
 
+	-- ADD THIS DEBUG BLOCK
+	local items = inventory[player]
+	print("[Pickup] Inventory after stash for", player.Name, ":", items and #items or "NIL")
+	if items then
+		for i, tool in items do
+			print("[Pickup]   Tool", i, ":", tool.Name)
+		end
+	end
+
+	print("[Pickup]", player.Name, "stashed", data.name, "to backpack")
+
 	if onStashCallback then
 		onStashCallback(player)
 	end
-
-	print(player.Name, "stashed", data.name, "to backpack")
 end
 
 function Pickup.drop(player)
-	local brainrotModel = carrying[player]
-	if not brainrotModel then return end
+	local model = carrying[player]
+	if not model then return end
 
-	-- Stop carry animation for state 1
 	stopCarryAnim(carryTracks[player])
 	carryTracks[player] = nil
 
 	carrying[player] = nil
 
-	-- Destroy only welds connecting to the character
-	local character = player.Character
-	for _, descendant in brainrotModel:GetDescendants() do
-		if descendant:IsA("WeldConstraint") then
-			if character and descendant.Part0 and descendant.Part0:IsDescendantOf(character) then
-				descendant:Destroy()
-			elseif character and descendant.Part1 and descendant.Part1:IsDescendantOf(character) then
-				descendant:Destroy()
-			end
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+
+	model.Parent = workspace
+
+	for _, p in ipairs(model:GetDescendants()) do
+		if p:IsA("BasePart") then
+			p.Anchored = true
+			p.CanCollide = false
 		end
 	end
 
-	-- Reparent to Workspace immediately
-	brainrotModel.Parent = game.Workspace
+	model:PivotTo(CFrame.new(root and root.Position or Vector3.new(0, 10, 0)))
 
-	-- Anchor all parts
-	for _, part in brainrotModel:GetDescendants() do
-		if part:IsA("BasePart") then
-			part.Anchored = true
-			part.CanCollide = false
-		end
-	end
+	Spawner.startDespawnTimer(model)
 
-	-- Raycast to find ground
-	local dropPosition
-
-	if character and character:FindFirstChild("HumanoidRootPart") then
-		local origin = character.HumanoidRootPart.Position
-		local params = RaycastParams.new()
-		params.FilterDescendantsInstances = {character, brainrotModel}
-		params.FilterType = Enum.RaycastFilterType.Exclude
-		local rayResult = game.Workspace:Raycast(origin, Vector3.new(0, -200, 0), params)
-		if rayResult then
-			dropPosition = rayResult.Position + Vector3.new(0, 1, 0)
-		else
-			dropPosition = Vector3.new(origin.X, 0, origin.Z)
-		end
-	else
-		dropPosition = Vector3.new(0, 10, 0)
-	end
-
-	brainrotModel:PivotTo(CFrame.new(dropPosition))
-
-	-- Billboard
-	local oldBillboard = brainrotModel.PrimaryPart:FindFirstChild("BrainrotBillboard")
-	if oldBillboard then
-		oldBillboard:Destroy()
-	end
-
-	BrainrotUI.createWorldBillboard(brainrotModel, {
-		name = brainrotModel:GetAttribute("Name"),
-		rarity = brainrotModel:GetAttribute("Rarity"),
-		incomePerSec = brainrotModel:GetAttribute("IncomePerSec"),
-	})
-
-	Spawner.startDespawnTimer(brainrotModel)
-
-	-- Delay prompt so other player can't grab during physics settle
-	task.delay(0.5, function()
-		if not brainrotModel.Parent then return end
-		-- Only re-enable prompt if still in Workspace (not re-grabbed by someone else)
-		if brainrotModel.Parent ~= game.Workspace then return end
-
-		local prompt = brainrotModel.PrimaryPart:FindFirstChildOfClass("ProximityPrompt")
-		if not prompt then
-			prompt = Instance.new("ProximityPrompt")
-			prompt.ActionText = "Grab"
-			prompt.ObjectText = brainrotModel:GetAttribute("Name")
-			prompt.HoldDuration = Config.PickupHoldDuration
-			prompt.MaxActivationDistance = Config.PickupRange
-			prompt.RequiresLineOfSight = false
-			prompt.Parent = brainrotModel.PrimaryPart
-		else
-			prompt.Enabled = true
-		end
-	end)
-
-	print(player.Name, "dropped", brainrotModel:GetAttribute("Name"))
+	print("[Pickup]", player.Name, "dropped", model:GetAttribute("Name"))
 end
 
-function Pickup.getCarried(player)
-	return carrying[player]
-end
-
-local function onDescendantAdded(descendant)
-	if not descendant:IsA("ProximityPrompt") then return end
-
-	descendant.Triggered:Connect(function(player)
-		local model = descendant.Parent
-		while model and not model:IsA("Model") do
-			model = model.Parent
-		end
-
-		-- Only grab wild spawned brainrots: has a Name, not Placed, and is parented directly in Workspace (not in a slot or character)
-		if not model then return end
-		if not model:GetAttribute("Name") then return end
-		if model:GetAttribute("Placed") then return end
-		if model.Parent ~= game.Workspace then return end
-
-		Pickup.grab(player, model)
-	end)
-end
-
-for _, descendant in game.Workspace:GetDescendants() do
-	onDescendantAdded(descendant)
-end
-game.Workspace.DescendantAdded:Connect(onDescendantAdded)
+------------------------------------------------
+-- Respawn handling
+------------------------------------------------
 
 Players.PlayerAdded:Connect(function(player)
 	player.CharacterAdded:Connect(function(character)
 		local humanoid = character:WaitForChild("Humanoid")
 
+		local saved = inventorySnapshot[player]
+		if saved then
+			inventory[player] = {}
+
+			for _, data in ipairs(saved) do
+				createBrainrotTool(player, data)
+			end
+
+			inventorySnapshot[player] = nil
+		end
+
 		humanoid.Died:Connect(function()
 			Pickup.drop(player)
-		end)
 
-		humanoid:GetPropertyChangedSignal("PlatformStand"):Connect(function()
-			if humanoid.PlatformStand then
-				Pickup.drop(player)
+			local items = inventory[player]
+			if items then
+				inventorySnapshot[player] = {}
+
+				for _, tool in ipairs(items) do
+					table.insert(inventorySnapshot[player], {
+						name = tool.Name,
+						rarity = tool:GetAttribute("Rarity"),
+						incomePerSec = tool:GetAttribute("IncomePerSec"),
+					})
+				end
 			end
 		end)
 	end)
 end)
 
-Players.PlayerRemoving:Connect(function(player)
-	local brainrotModel = carrying[player]
-	if brainrotModel then
-		brainrotModel:Destroy()
-		carrying[player] = nil
-	end
 
-	-- Clean up carry animation track
-	stopCarryAnim(carryTracks[player])
-	carryTracks[player] = nil
-
-	local items = inventory[player]
-	if items then
-		for _, tool in items do
-			tool:Destroy()
-		end
-	end
-	inventory[player] = nil
-end)
+------------------------------------------------
+-- Boundary stash trigger
+------------------------------------------------
 
 local boundary = game.Workspace.SpawnZones:WaitForChild("Boundary")
+local stashDebounce = {}
 
 boundary.TouchEnded:Connect(function(hit)
 	local character = hit.Parent
@@ -467,8 +468,16 @@ boundary.TouchEnded:Connect(function(hit)
 	local player = Players:GetPlayerFromCharacter(character)
 	if not player then return end
 	if not carrying[player] then return end
+	if equipped[player] then return end  -- ← ADD THIS LINE
+	
+	if stashDebounce[player] then return end
+	stashDebounce[player] = true
 
 	Pickup.stash(player)
+	
+	task.delay(1, function()
+		stashDebounce[player] = nil
+	end)
 end)
 
 return Pickup
