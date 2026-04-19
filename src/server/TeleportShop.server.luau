@@ -2,7 +2,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Remotes = require(ReplicatedStorage.Remotes)
 local teleportEvent = Remotes.TeleportRequest  -- We already have a Remotes.luau so removed TeleportRequest
 
-local TARGET_POSITION = Vector3.new(1405, 25, -162) 
+local TARGET_POSITION = Vector3.new(1435, 25, -162) 
 
 teleportEvent.OnServerEvent:Connect(function(player)
     local character = player.Character
