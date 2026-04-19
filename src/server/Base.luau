@@ -1,6 +1,9 @@
 local Players = game:GetService("Players")
-local Config = require(game.ReplicatedStorage.Config)
-local Remotes = require(game.ReplicatedStorage.Remotes)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage.Config)
+local Remotes = require(ReplicatedStorage.Remotes)
+local Util = require(ReplicatedStorage.Util)
 
 local Base = {}
 
@@ -26,7 +29,6 @@ local function createBaseSign(base, player)
 	surface.LightInfluence = 0
 	surface.Parent = sign
 
-	-- White background panel
 	local bg = Instance.new("Frame")
 	bg.Name = "Background"
 	bg.Size = UDim2.new(0.9, 0, 0.85, 0)
@@ -44,7 +46,6 @@ local function createBaseSign(base, player)
 	bgStroke.Thickness = 3
 	bgStroke.Parent = bg
 
-	-- Horizontal layout inside bg
 	local layout = Instance.new("UIListLayout")
 	layout.FillDirection = Enum.FillDirection.Horizontal
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -53,7 +54,6 @@ local function createBaseSign(base, player)
 	layout.Padding = UDim.new(0.03, 0)
 	layout.Parent = bg
 
-	-- Player thumbnail (left side)
 	local thumbFrame = Instance.new("Frame")
 	thumbFrame.Name = "ThumbFrame"
 	thumbFrame.Size = UDim2.new(0.3, 0, 0.7, 0)
@@ -80,7 +80,6 @@ local function createBaseSign(base, player)
 	thumbStroke.Thickness = 3
 	thumbStroke.Parent = thumb
 
-	-- Info section (right side)
 	local info = Instance.new("Frame")
 	info.Name = "Info"
 	info.Size = UDim2.new(0.55, 0, 0.8, 0)
@@ -95,7 +94,6 @@ local function createBaseSign(base, player)
 	infoLayout.Padding = UDim.new(0.05, 0)
 	infoLayout.Parent = info
 
-	-- Player name
 	local nameLabel = Instance.new("TextLabel")
 	nameLabel.Name = "PlayerName"
 	nameLabel.Text = player.Name
@@ -112,7 +110,6 @@ local function createBaseSign(base, player)
 	nameStroke.Thickness = 1.5
 	nameStroke.Parent = nameLabel
 
-	-- Income display
 	local incomeLabel = Instance.new("TextLabel")
 	incomeLabel.Name = "IncomeDisplay"
 	incomeLabel.Text = "$0/s"
@@ -135,6 +132,42 @@ local function clearBaseSign(base)
 	if not sign then return end
 	local existing = sign:FindFirstChild("BaseSign")
 	if existing then existing:Destroy() end
+end
+
+-- Clear placed brainrots, upgrade signs, and reset slot state when a base is released
+local function clearBaseSlots(base)
+	local slotsFolder = base:FindFirstChild("Slots")
+	if not slotsFolder then return end
+
+	for _, slot in slotsFolder:GetChildren() do
+		-- Destroy placed brainrot models (anything with the Placed attribute)
+		for _, child in slot:GetChildren() do
+			if child:IsA("Model") and child:GetAttribute("Placed") then
+				child:Destroy()
+			end
+		end
+
+		-- Destroy upgrade sign (named "UpgradeBillboard", sits alongside the brainrot model)
+		local upgradeBillboard = slot:FindFirstChild("UpgradeBillboard")
+		if upgradeBillboard then
+			upgradeBillboard:Destroy()
+		end
+
+		-- Reset accumulated cash attribute
+		slot:SetAttribute("AccumulatedCash", 0)
+
+		-- Reset CollectButton cash display
+		local collectButton = slot:FindFirstChild("CollectButton")
+		if collectButton then
+			local billboard = collectButton:FindFirstChild("CashDisplay")
+			if billboard then
+				local label = billboard:FindFirstChild("Amount")
+				if label then
+					label.Text = Util.formatMoney(0)
+				end
+			end
+		end
+	end
 end
 
 function Base.updateSignIncome(base, incomeText)
@@ -179,8 +212,10 @@ end
 
 function Base.releaseBase(player)
 	if claimedBases[player] then
-		print(player.Name, "released", claimedBases[player].Name)
-		clearBaseSign(claimedBases[player])
+		local base = claimedBases[player]
+		print(player.Name, "released", base.Name)
+		clearBaseSign(base)
+		clearBaseSlots(base)  -- destroy placed brainrots, upgrade signs, reset slot visuals
 		claimedBases[player] = nil
 	end
 end
@@ -198,9 +233,8 @@ Players.PlayerAdded:Connect(function(player)
 	Base.claimBase(player)
 end)
 
-Players.PlayerRemoving:Connect(function(player)
-	Base.releaseBase(player)
-end)
+-- NOTE: PlayerRemoving is wired in Main.server.luau to control ordering
+-- (PlayerData.clearSession must save slot state BEFORE Base.releaseBase clears it)
 
 for _, player in Players:GetPlayers() do
 	if not claimedBases[player] then

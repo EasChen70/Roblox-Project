@@ -33,12 +33,12 @@ local Brainrots = {
 
 -- Level/Income scaling by rarity (v2 — Max Level 50)
 Brainrots.RarityScaling = {
-	Common    = { incomeScale = 0.05, costMult = 8  },
-	Rare      = { incomeScale = 0.07, costMult = 10 },
-	Epic      = { incomeScale = 0.09, costMult = 13 },
-	Legendary = { incomeScale = 0.12, costMult = 18 },
-	Mythic    = { incomeScale = 0.18, costMult = 26 },
-	Secret    = { incomeScale = 0.25, costMult = 35 },
+	Common    = { incomeScale = 0.30, costMult = 10  },
+	Rare      = { incomeScale = 0.30, costMult = 10 },
+	Epic      = { incomeScale = 0.30, costMult = 10 },
+	Legendary = { incomeScale = 0.30, costMult = 10 },
+	Mythic    = { incomeScale = 0.30, costMult = 10 },
+	Secret    = { incomeScale = 0.30, costMult = 10 },
 }
 
 Brainrots.MaxLevel = 50

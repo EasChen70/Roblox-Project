@@ -282,6 +282,7 @@ function Placement.setup()
 						if part:IsA("BasePart") then
 							part.Anchored = true
 							part.CanCollide = false
+							part.CanQuery = false
 						end
 					end
 

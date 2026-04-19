@@ -1,12 +1,16 @@
-local Config = require(game.ReplicatedStorage.Config)
-local Remotes = require(game.ReplicatedStorage.Remotes)
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
 
-local Base = require(game.ServerScriptService.Base)
-local Spawner = require(game.ServerScriptService.Spawner)
-local Pickup = require(game.ServerScriptService.Pickup)
-local Placement = require(game.ServerScriptService.Placement)
-local Income = require(game.ServerScriptService.Income)
-local PlayerData = require(game.ServerScriptService.PlayerData)
+local Config = require(ReplicatedStorage.Config)
+local Remotes = require(ReplicatedStorage.Remotes)
+
+local Base = require(ServerScriptService.Base)
+local Spawner = require(ServerScriptService.Spawner)
+local Pickup = require(ServerScriptService.Pickup)
+local Placement = require(ServerScriptService.Placement)
+local Income = require(ServerScriptService.Income)
+local PlayerData = require(ServerScriptService.PlayerData)
 
 Spawner.start()
 
@@ -17,6 +21,14 @@ PlayerData.setup()
 PlayerData.start()
 
 Income.start()
+
+-- Ordered PlayerRemoving: save player state BEFORE destroying placed brainrots
+Players.PlayerRemoving:Connect(function(player)
+	-- 1. Save slot state first (reads live models from base while they still exist)
+	PlayerData.clearSession(player)
+	-- 2. Then release base + destroy placed brainrots + reset slot visuals
+	Base.releaseBase(player)
+end)
 
 -- Wire world grab: Spawner fires callback → Pickup.grab handles it
 -- Eliminates DescendantAdded leak (no longer watching Workspace for prompts)

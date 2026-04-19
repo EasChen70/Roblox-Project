@@ -346,6 +346,7 @@ function PlayerData.hydrateSlots(player, base, slots)
 				if part:IsA("BasePart") then
 					part.Anchored = true
 					part.CanCollide = false
+					part.CanQuery = false
 				end
 			end
 			return c
@@ -472,7 +473,7 @@ end
 -----CLEAN UP-----
 -- Atomic clearSession: captures data FIRST, clears sessionData FIRST (before yielding SetAsync),
 -- so concurrent callers (PlayerRemoving + BindToClose) can't both proceed past the guard.
-local function clearSession(player)
+function PlayerData.clearSession(player)
 	-- Atomic claim: if sessionData[player] is nil, another caller already handled this.
 	-- This check-and-clear MUST happen before any yield (task.wait, UpdateAsync, SetAsync).
 	local data = sessionData[player]
@@ -513,13 +514,12 @@ end
 -----LIFECYCLE-----
 
 function PlayerData.setup()
-	Players.PlayerRemoving:Connect(clearSession)
-
-	game:BindToClose(function()
-		for _, player in Players:GetPlayers() do
-			pcall(clearSession, player)
-		end
-	end)
+    -- PlayerRemoving is wired in Main.server.luau to control ordering with Base.releaseBase
+    game:BindToClose(function()
+        for _, player in Players:GetPlayers() do
+            pcall(PlayerData.clearSession, player)
+        end
+    end)
 end
 
 function PlayerData.start()
