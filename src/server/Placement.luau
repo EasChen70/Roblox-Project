@@ -3,6 +3,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
 local Config = require(ReplicatedStorage.Config)
+local Brainrots = require(ReplicatedStorage.Brainrots)
 local Base = require(game.ServerScriptService.Base)
 local Pickup = require(game.ServerScriptService.Pickup)
 local BrainrotUI = require(game.ReplicatedStorage.BrainrotUI)
@@ -59,14 +60,20 @@ end
 
 -- Shared prompt setup for a placed model on a slot.
 -- Called by Placement.setup() on fresh place AND PlayerData.hydrateSlots on load.
--- Eliminates duplicated prompt logic between the two systems.
--- data = { name, rarity, incomePerSec }
+-- data = { name, rarity, baseIncome, level }
 function Placement.createSlotPrompts(clone, slot, base, data)
 	local name = data.name
 	local rarity = data.rarity
-	local incomePerSec = data.incomePerSec
+	local baseIncome = data.baseIncome
+	local level = data.level or 1
 
-	-- PICKUP prompt
+	-- Compute and set attributes based on level
+	local currentIncome = Brainrots.getIncomeAtLevel(baseIncome, rarity, level)
+	clone:SetAttribute("Level", level)
+	clone:SetAttribute("BaseIncome", baseIncome)
+	clone:SetAttribute("IncomePerSec", currentIncome)
+
+	-- PICKUP prompt (preserves level)
 	local pickupPrompt = Instance.new("ProximityPrompt")
 	pickupPrompt.ActionText = "Pick Up"
 	pickupPrompt.ObjectText = name
@@ -80,24 +87,30 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 			if Base.getOwner(base) ~= triggerPlayer then return end
 			if Pickup.isCarrying(triggerPlayer) then return end
 
-			local success = Pickup.giveItem(triggerPlayer, name, rarity, incomePerSec)
+			local pickupLevel = clone:GetAttribute("Level") or 1
+			local success = Pickup.giveItem(triggerPlayer, name, rarity, baseIncome, pickupLevel)
 			if not success then return end
 
 			clone:Destroy()
+
+			-- Clean up upgrade billboard for this slot
+			local ub = slot:FindFirstChild("UpgradeBillboard")
+			if ub then ub:Destroy() end
 
 			if onDataChangedCallback then
 				onDataChangedCallback(triggerPlayer)
 			end
 
 			Placement.refreshPrompts(triggerPlayer)
-			print("[Placement] picked up", name, "from slot")
+			print("[Placement] picked up", name, "L" .. pickupLevel, "from slot")
 		end)
 	end)
 
-	-- SELL prompt
+	-- SELL prompt (flat: baseIncome × 10, no level bonus)
+	local sellValue = baseIncome * 10
 	local sellPrompt = Instance.new("ProximityPrompt")
 	sellPrompt.ActionText = "Sell"
-	sellPrompt.ObjectText = "$" .. (incomePerSec * 10)
+	sellPrompt.ObjectText = "$" .. sellValue
 	sellPrompt.HoldDuration = Config.PickupHoldDuration + 0.05
 	sellPrompt.MaxActivationDistance = 8
 	sellPrompt.RequiresLineOfSight = false
@@ -108,7 +121,6 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 		withDebounce(slot, function()
 			if Base.getOwner(base) ~= triggerPlayer then return end
 
-			local sellValue = incomePerSec * 10
 			local stats = triggerPlayer:FindFirstChild("leaderstats")
 			if stats then
 				local money = stats:FindFirstChild("Money")
@@ -131,6 +143,10 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 
 			clone:Destroy()
 
+			-- Clean up upgrade billboard for this slot
+			local ub = slot:FindFirstChild("UpgradeBillboard")
+			if ub then ub:Destroy() end
+
 			if onDataChangedCallback then
 				onDataChangedCallback(triggerPlayer)
 			end
@@ -139,6 +155,74 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 			print("[Placement] sold", name, "for $" .. sellValue)
 		end)
 	end)
+
+	-- UPGRADE BILLBOARD (pink, in front of slot) + upgrade prompt handler
+	local upgradeBillboard = BrainrotUI.createUpgradeBillboard(slot, {
+		rarity = rarity,
+		level = level,
+		baseIncome = baseIncome,
+	})
+
+	if upgradeBillboard and upgradeBillboard.PrimaryPart then
+		local upgradePrompt = upgradeBillboard.PrimaryPart:FindFirstChild("UpgradePrompt")
+
+		if upgradePrompt then
+			upgradePrompt.MouseClick:Connect(function(triggerPlayer)
+				withDebounce("upgrade_" .. slot.Name, function()
+					if Base.getOwner(base) ~= triggerPlayer then return end
+
+					local currentLevel = clone:GetAttribute("Level") or 1
+					if currentLevel >= Brainrots.MaxLevel then return end
+
+					local cost = Brainrots.getUpgradeCost(baseIncome, rarity, currentLevel)
+					if not cost then return end
+
+					local stats = triggerPlayer:FindFirstChild("leaderstats")
+					local money = stats and stats:FindFirstChild("Money")
+					if not money or money.Value < cost then
+						print("[Placement]", triggerPlayer.Name, "can't afford upgrade ($" .. cost .. ")")
+						return
+					end
+
+					money.Value -= cost
+					-- Play upgrade sound
+					local upgradeSound = Instance.new("Sound")
+					upgradeSound.SoundId = "rbxassetid://76834925120308"
+					upgradeSound.Volume = 1
+					upgradeSound.Parent = clone.PrimaryPart
+					upgradeSound:Play()
+					game.Debris:AddItem(upgradeSound, 3)  -- auto-clean after 3 seconds
+					local newLevel = currentLevel + 1
+					local newIncome = Brainrots.getIncomeAtLevel(baseIncome, rarity, newLevel)
+
+					clone:SetAttribute("Level", newLevel)
+					clone:SetAttribute("IncomePerSec", newIncome)
+
+					BrainrotUI.updateBillboardLevel(clone, newLevel, newIncome, Brainrots.MaxLevel)
+
+					if newLevel >= Brainrots.MaxLevel then
+						BrainrotUI.setUpgradeBillboardMax(upgradeBillboard)
+						BrainrotUI.applyMaxLevelGlow(clone)
+					else
+						local nextCost = Brainrots.getUpgradeCost(baseIncome, rarity, newLevel)
+						BrainrotUI.updateUpgradeBillboard(upgradeBillboard, nextCost, newLevel)
+					end
+
+					if onDataChangedCallback then
+						onDataChangedCallback(triggerPlayer)
+					end
+
+					print("[Placement]", triggerPlayer.Name, "upgraded", name, "to L" .. newLevel, "for $" .. cost)
+				end)
+			end)
+		end
+
+		-- If already at max level on placement/hydrate, reflect that now
+		if level >= Brainrots.MaxLevel then
+			BrainrotUI.setUpgradeBillboardMax(upgradeBillboard)
+			BrainrotUI.applyMaxLevelGlow(clone)
+		end
+	end
 end
 
 function Placement.setup()
@@ -173,7 +257,8 @@ function Placement.setup()
 
 					local name = tool.Name
 					local rarity = tool:GetAttribute("Rarity")
-					local incomePerSec = tool:GetAttribute("IncomePerSec")
+					local baseIncome = tool:GetAttribute("IncomePerSec")  -- Tool stores BASE income
+					local level = tool:GetAttribute("Level") or 1
 
 					local folder = modelFolders[rarity]
 					if not folder then return end
@@ -190,8 +275,8 @@ function Placement.setup()
 
 					clone:SetAttribute("Name", name)
 					clone:SetAttribute("Rarity", rarity)
-					clone:SetAttribute("IncomePerSec", incomePerSec)
 					clone:SetAttribute("Placed", true)
+					-- Level, BaseIncome, IncomePerSec are set inside createSlotPrompts
 
 					for _, part in clone:GetDescendants() do
 						if part:IsA("BasePart") then
@@ -217,18 +302,25 @@ function Placement.setup()
 
 					clone.Parent = slot
 
+					-- Compute current income at this level for billboard display
+					local currentIncome = Brainrots.getIncomeAtLevel(baseIncome, rarity, level)
+
 					BrainrotUI.createBillboard(clone, {
 						name = name,
 						rarity = rarity,
-						incomePerSec = incomePerSec,
+						incomePerSec = currentIncome,
+						level = level,
+						maxLevel = Brainrots.MaxLevel,
 					})
 
-					-- Wire pickup + sell prompts via shared helper
+					-- Wire pickup + sell + upgrade prompts via shared helper
 					Placement.createSlotPrompts(clone, slot, base, {
 						name = name,
 						rarity = rarity,
-						incomePerSec = incomePerSec,
+						baseIncome = baseIncome,
+						level = level,
 					})
+
 					Pickup.removeFromInventory(player, tool)
 					tool:Destroy()
 
@@ -239,7 +331,7 @@ function Placement.setup()
 						onDataChangedCallback(player)
 					end
 
-					print(player.Name, "placed", name)
+					print(player.Name, "placed", name, "L" .. level)
 				end)
 			end)
 		end

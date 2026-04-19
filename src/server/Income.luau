@@ -12,7 +12,7 @@ function Income.onDataChanged(cb)
 	onDataChangedCallback = cb
 end
 
-local bases = game.Workspace.Map.Bases
+local bases = game.Workspace.Map.Bases	
 
 local function getPlacedBrainrot(slot)
 	for _, child in slot:GetChildren() do

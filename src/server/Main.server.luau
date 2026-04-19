@@ -25,19 +25,18 @@ Spawner.onGrab(function(player, model)
 end)
 
 Placement.onDataChanged(function(player)
-	PlayerData.save(player)
+	PlayerData.requestSave(player)
 end)
 
 Income.onDataChanged(function(player)
-	PlayerData.save(player)
+	PlayerData.requestSave(player)
 end)
 
 Pickup.onStash(function(player)
 	Placement.refreshPrompts(player)
-	PlayerData.save(player)
+	PlayerData.requestSave(player)
 end)
 
 Pickup.onEquipChanged(function(player)
 	Placement.refreshPrompts(player)
 end)
-

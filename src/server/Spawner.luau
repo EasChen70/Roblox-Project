@@ -19,7 +19,7 @@ local ZONES = {
 print("[Spawner] Module loaded, ZONES count:", #ZONES)
 
 local brainrotsByRarity = {}
-for _, entry in Brainrots do
+for _, entry in ipairs(Brainrots) do
 	if not brainrotsByRarity[entry.rarity] then
 		brainrotsByRarity[entry.rarity] = {}
 	end

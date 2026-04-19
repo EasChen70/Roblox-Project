@@ -3,6 +3,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
 local Config = require(ReplicatedStorage.Config)
+local Brainrots = require(ReplicatedStorage.Brainrots)
 local Spawner = require(game.ServerScriptService.Spawner)
 local BrainrotUI = require(game.ReplicatedStorage.BrainrotUI)
 
@@ -104,13 +105,17 @@ end
 ------------------------------------------------
 
 local function createBrainrotTool(player, data)
+	local level = data.level or 1
+	local baseIncome = data.incomePerSec  -- Stored as "base" because tools are level-aware now
+
 	local tool = Instance.new("Tool")
 	tool.Name = data.name
 	tool.CanBeDropped = false
 	tool.RequiresHandle = true
 
 	tool:SetAttribute("Rarity", data.rarity)
-	tool:SetAttribute("IncomePerSec", data.incomePerSec)
+	tool:SetAttribute("IncomePerSec", baseIncome)  -- Base income; actual display uses level
+	tool:SetAttribute("Level", level)
 	tool:SetAttribute("BrainrotTool", true)
 
 	local handle = Instance.new("Part")
@@ -121,8 +126,7 @@ local function createBrainrotTool(player, data)
 	handle.Anchored = false
 	handle.Parent = tool
 
-	-- ADD THIS DEBUG
-	print("[Pickup] Created tool:", data.name, "RequiresHandle:", tool.RequiresHandle, "Handle exists:", tool:FindFirstChild("Handle") ~= nil)
+	print("[Pickup] Created tool:", data.name, "L" .. level, "RequiresHandle:", tool.RequiresHandle, "Handle exists:", tool:FindFirstChild("Handle") ~= nil)
 
 	local folder = modelFolders[data.rarity]
 	local template = folder and folder:FindFirstChild(data.name)
@@ -145,7 +149,8 @@ local function createBrainrotTool(player, data)
 
 		visual:SetAttribute("Name", data.name)
 		visual:SetAttribute("Rarity", data.rarity)
-		visual:SetAttribute("IncomePerSec", data.incomePerSec)
+		visual:SetAttribute("Level", level)
+		visual:SetAttribute("BaseIncome", baseIncome)
 
 		if not visual.PrimaryPart then
 			visual.PrimaryPart = visual:FindFirstChildWhichIsA("BasePart")
@@ -164,14 +169,12 @@ local function createBrainrotTool(player, data)
 			end
 		end
 
-		-- Position BEFORE parenting (reduces replication spike)
 		visual:PivotTo(
 			rootPart.CFrame * CFrame.new(Config.CarryOffset) * Config.CarryRotation
 		)
 
 		visual.Parent = character
 
-		-- Build internal welds between all non-PrimaryPart parts and PrimaryPart
 		for _, part in visual:GetDescendants() do
 			if part:IsA("BasePart") and part ~= visual.PrimaryPart then
 				local w = Instance.new("WeldConstraint")
@@ -181,13 +184,11 @@ local function createBrainrotTool(player, data)
 			end
 		end
 
-		-- Weld PrimaryPart to HRP
 		local weld = Instance.new("WeldConstraint")
 		weld.Part0 = rootPart
 		weld.Part1 = visual.PrimaryPart
 		weld.Parent = visual.PrimaryPart
 
-		-- Unanchor all parts — internal welds + HRP weld keep everything together
 		for _, p in visual:GetDescendants() do
 			if p:IsA("BasePart") then
 				p.Anchored = false
@@ -196,10 +197,14 @@ local function createBrainrotTool(player, data)
 
 		print("[Pickup] equip weld set for", data.name)
 
+		-- Billboard for carried visual: show level if > 1, otherwise plain
+		local currentIncome = Brainrots.getIncomeAtLevel(baseIncome, data.rarity, level)
 		BrainrotUI.createBillboard(visual, {
 			name = data.name,
 			rarity = data.rarity,
-			incomePerSec = data.incomePerSec,
+			incomePerSec = currentIncome,
+			level = level > 1 and level or nil,  -- only show level if non-default
+			maxLevel = Brainrots.MaxLevel,
 		})
 
 		carrying[player] = visual
@@ -209,7 +214,7 @@ local function createBrainrotTool(player, data)
 			onEquipCallback(player, true)
 		end
 
-		print("[Pickup] equipped", data.name, "for", player.Name)
+		print("[Pickup] equipped", data.name, "L" .. level, "for", player.Name)
 	end)
 
 	tool.Unequipped:Connect(function()
@@ -240,7 +245,7 @@ end
 -- Give item
 ------------------------------------------------
 
-function Pickup.giveItem(player, name, rarity, incomePerSec)
+function Pickup.giveItem(player, name, rarity, incomePerSec, level)
 	local items = inventory[player]
 	if items and #items >= Config.MaxInventory then
 		return false
@@ -256,6 +261,7 @@ function Pickup.giveItem(player, name, rarity, incomePerSec)
 		name = name,
 		rarity = rarity,
 		incomePerSec = incomePerSec,
+		level = level or 1,
 	})
 
 	return true
@@ -263,11 +269,6 @@ end
 
 ------------------------------------------------
 -- World grab (state 1: model welded directly to HRP)
--- Called via Spawner.onGrab callback — no DescendantAdded needed
---
--- Ground teleport fix: anchor + Massless all parts FIRST, then
--- PivotTo carry position, then reparent, then build internal welds,
--- then weld to HRP, then unanchor all parts. Order matters.
 ------------------------------------------------
 
 function Pickup.grab(player, model)
@@ -282,7 +283,6 @@ function Pickup.grab(player, model)
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root then return end
 
-	-- Disable prompt immediately after grab check passes
 	local prompt = model.PrimaryPart:FindFirstChildOfClass("ProximityPrompt")
 	if prompt then
 		prompt.Enabled = false
@@ -292,8 +292,6 @@ function Pickup.grab(player, model)
 	local rarity = model:GetAttribute("Rarity")
 	local incomePerSec = model:GetAttribute("IncomePerSec")
 
-	-- Step 1: kill physics on all parts before anything else
-	-- This is what prevents the ground teleport jolt
 	local partCount = 0
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
@@ -306,14 +304,9 @@ function Pickup.grab(player, model)
 
 	print("[Pickup] Model part count:", partCount)
 
-	-- Step 2: move to carry position while still in Workspace (clean, no physics)
 	model:PivotTo(root.CFrame * CFrame.new(Config.CarryOffset) * Config.CarryRotation)
-
-	-- Step 3: reparent to character
 	model.Parent = character
 
-	-- Step 4: build internal welds between all non-PrimaryPart parts and PrimaryPart
-	-- (spawned models from Toolbox often lack these — without them, unanchored parts fall)
 	for _, part in model:GetDescendants() do
 		if part:IsA("BasePart") and part ~= model.PrimaryPart then
 			local w = Instance.new("WeldConstraint")
@@ -323,14 +316,11 @@ function Pickup.grab(player, model)
 		end
 	end
 
-	-- Step 5: weld PrimaryPart to HRP
 	local weld = Instance.new("WeldConstraint")
 	weld.Part0 = root
 	weld.Part1 = model.PrimaryPart
 	weld.Parent = model.PrimaryPart
 
-	-- Step 6: unanchor all parts
-	-- Internal welds hold assembly together; HRP weld drives it
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
 			p.Anchored = false
@@ -339,7 +329,6 @@ function Pickup.grab(player, model)
 
 	print("[Pickup] grab weld set, all parts unanchored —", model:GetAttribute("Name"), "parts:", partCount)
 
-	-- Pause despawn timer + free the spawn point
 	model:SetAttribute("DespawnPaused", true)
 	Spawner.clearPoint(model)
 
@@ -360,10 +349,12 @@ function Pickup.stash(player)
 	stopCarryAnim(carryTracks[player])
 	carryTracks[player] = nil
 
+	-- World grabs always stash at level 1
 	local data = {
 		name = model:GetAttribute("Name"),
 		rarity = model:GetAttribute("Rarity"),
 		incomePerSec = model:GetAttribute("IncomePerSec"),
+		level = 1,
 	}
 
 	model:Destroy()
@@ -371,12 +362,11 @@ function Pickup.stash(player)
 
 	createBrainrotTool(player, data)
 
-	-- ADD THIS DEBUG BLOCK
 	local items = inventory[player]
 	print("[Pickup] Inventory after stash for", player.Name, ":", items and #items or "NIL")
 	if items then
 		for i, tool in items do
-			print("[Pickup]   Tool", i, ":", tool.Name)
+			print("[Pickup]   Tool", i, ":", tool.Name, "L" .. (tool:GetAttribute("Level") or 1))
 		end
 	end
 
@@ -446,13 +436,13 @@ Players.PlayerAdded:Connect(function(player)
 						name = tool.Name,
 						rarity = tool:GetAttribute("Rarity"),
 						incomePerSec = tool:GetAttribute("IncomePerSec"),
+						level = tool:GetAttribute("Level") or 1,
 					})
 				end
 			end
 		end)
 	end)
 end)
-
 
 ------------------------------------------------
 -- Boundary stash trigger
@@ -468,13 +458,13 @@ boundary.TouchEnded:Connect(function(hit)
 	local player = Players:GetPlayerFromCharacter(character)
 	if not player then return end
 	if not carrying[player] then return end
-	if equipped[player] then return end  -- ← ADD THIS LINE
-	
+	if equipped[player] then return end
+
 	if stashDebounce[player] then return end
 	stashDebounce[player] = true
 
 	Pickup.stash(player)
-	
+
 	task.delay(1, function()
 		stashDebounce[player] = nil
 	end)
