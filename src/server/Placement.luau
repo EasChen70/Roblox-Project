@@ -1,7 +1,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
-
+local Remotes = require(ReplicatedStorage.Remotes)
 local Config = require(ReplicatedStorage.Config)
 local Brainrots = require(ReplicatedStorage.Brainrots)
 local Base = require(game.ServerScriptService.Base)
@@ -24,6 +24,7 @@ local modelFolders = {
 	Legendary = ServerStorage:WaitForChild("LegendaryBrainRotModels"),
 	Mythic    = ServerStorage:WaitForChild("MythicBrainRotModels"),
 	Secret    = ServerStorage:WaitForChild("SecretBrainRotModels"),
+	Divine    = ServerStorage:WaitForChild("DivineBrainRotModels"),
 }
 
 local bases = game.Workspace.Map.Bases
@@ -185,13 +186,7 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 					end
 
 					money.Value -= cost
-					-- Play upgrade sound
-					local upgradeSound = Instance.new("Sound")
-					upgradeSound.SoundId = "rbxassetid://76834925120308"
-					upgradeSound.Volume = 1
-					upgradeSound.Parent = clone.PrimaryPart
-					upgradeSound:Play()
-					game.Debris:AddItem(upgradeSound, 3)  -- auto-clean after 3 seconds
+					Remotes.UpgradeSound:FireClient(triggerPlayer)
 					local newLevel = currentLevel + 1
 					local newIncome = Brainrots.getIncomeAtLevel(baseIncome, rarity, newLevel)
 

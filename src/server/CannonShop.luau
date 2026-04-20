@@ -48,7 +48,12 @@ function CannonShop.init()
 
 		local currentPower = player:GetAttribute("CannonPower") or 0
 		local actualCost = computeCost(upgrade.cost, currentPower)
-
+		print("[CannonShop] Purchase attempt:", player.Name, 
+			"| amount:", amount,
+			"| currentPower:", currentPower,
+			"| actualCost:", actualCost,
+			"| money:", money.Value,
+			"| canAfford:", money.Value >= actualCost)
 		if money.Value < actualCost then return end
 
 		money.Value -= actualCost

@@ -1,7 +1,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
-
+local Remotes = require(ReplicatedStorage.Remotes)
 local Config = require(ReplicatedStorage.Config)
 local Brainrots = require(ReplicatedStorage.Brainrots)
 local Spawner = require(game.ServerScriptService.Spawner)
@@ -25,6 +25,7 @@ local modelFolders = {
 	Legendary = ServerStorage:WaitForChild("LegendaryBrainRotModels"),
 	Mythic    = ServerStorage:WaitForChild("MythicBrainRotModels"),
 	Secret    = ServerStorage:WaitForChild("SecretBrainRotModels"),
+	Divine    = ServerStorage:WaitForChild("DivineBrainRotModels"),
 }
 
 ------------------------------------------------
@@ -276,7 +277,7 @@ function Pickup.grab(player, model)
 		print("[Pickup] grab blocked —", player.Name, "already carrying something")
 		return
 	end
-
+	Remotes.GrabStateChanged:FireClient(player, true)
 	local character = player.Character
 	if not character then return end
 
@@ -285,7 +286,7 @@ function Pickup.grab(player, model)
 
 	local prompt = model.PrimaryPart:FindFirstChildOfClass("ProximityPrompt")
 	if prompt then
-		prompt.Enabled = false
+		prompt:Destroy()
 	end
 
 	local name = model:GetAttribute("Name")
@@ -348,7 +349,7 @@ function Pickup.stash(player)
 
 	stopCarryAnim(carryTracks[player])
 	carryTracks[player] = nil
-
+	Remotes.GrabStateChanged:FireClient(player, false)
 	-- World grabs always stash at level 1
 	local data = {
 		name = model:GetAttribute("Name"),
@@ -383,25 +384,86 @@ function Pickup.drop(player)
 
 	stopCarryAnim(carryTracks[player])
 	carryTracks[player] = nil
-
 	carrying[player] = nil
+	Remotes.GrabStateChanged:FireClient(player, false)
 
-	local char = player.Character
-	local root = char and char:FindFirstChild("HumanoidRootPart")
-
-	model.Parent = workspace
-
-	for _, p in ipairs(model:GetDescendants()) do
-		if p:IsA("BasePart") then
-			p.Anchored = true
-			p.CanCollide = false
+	-- Destroy all welds on the model
+	for _, p in model:GetDescendants() do
+		if p:IsA("WeldConstraint") then
+			p:Destroy()
 		end
 	end
 
-	model:PivotTo(CFrame.new(root and root.Position or Vector3.new(0, 10, 0)))
+	-- Clean up HRP welds
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if root then
+		for _, w in root:GetChildren() do
+			if w:IsA("WeldConstraint") then
+				w:Destroy()
+			end
+		end
+	end
+
+	if root then
+		local dropPos = root.Position + Vector3.new(0, 0, 3)
+
+		local params = RaycastParams.new()
+		params.FilterDescendantsInstances = {model, player.Character}
+		params.FilterType = Enum.RaycastFilterType.Exclude
+
+		local hit = workspace:Raycast(
+			Vector3.new(dropPos.X, root.Position.Y + 50, dropPos.Z),
+			Vector3.new(0, -100, 0),
+			params
+		)
+
+		local rawHitY = hit and hit.Position.Y
+		local groundY
+
+		if rawHitY and rawHitY < root.Position.Y then
+			groundY = rawHitY
+		else
+			groundY = root.Position.Y - 3
+		end
+
+		print("[Pickup] DROP DEBUG",
+			"| rootY:", root.Position.Y,
+			"| hitY:", rawHitY or "MISS",
+			"| hitInstance:", hit and hit.Instance.Name or "nil",
+			"| groundY (final):", groundY
+		)
+
+		model.Parent = workspace
+		for _, p in model:GetDescendants() do
+			if p:IsA("BasePart") then
+				p.Anchored = true
+				p.CanCollide = false
+			end
+		end
+		model:PivotTo(CFrame.new(dropPos.X, groundY, dropPos.Z))
+	else
+		model.Parent = workspace
+		model:PivotTo(CFrame.new(Vector3.new(0, 10, 0)))
+	end
+
+	-- Recreate grab prompt regardless of which path was taken
+	if model.PrimaryPart then
+		local newPrompt = Instance.new("ProximityPrompt")
+		newPrompt.ActionText = "Grab"
+		newPrompt.ObjectText = model:GetAttribute("Name") or ""
+		newPrompt.HoldDuration = Config.PickupHoldDuration
+		newPrompt.MaxActivationDistance = Config.PickupRange
+		newPrompt.RequiresLineOfSight = false
+		newPrompt.Parent = model.PrimaryPart
+
+		newPrompt.Triggered:Connect(function(triggerPlayer)
+			if carrying[triggerPlayer] then return end
+			Pickup.grab(triggerPlayer, model)
+		end)
+	end
 
 	Spawner.startDespawnTimer(model)
-
 	print("[Pickup]", player.Name, "dropped", model:GetAttribute("Name"))
 end
 
@@ -468,6 +530,11 @@ boundary.TouchEnded:Connect(function(hit)
 	task.delay(1, function()
 		stashDebounce[player] = nil
 	end)
+end)
+
+Remotes.DropBrainrot.OnServerEvent:Connect(function(player)
+	if not carrying[player] then return end
+	Pickup.drop(player)
 end)
 
 return Pickup

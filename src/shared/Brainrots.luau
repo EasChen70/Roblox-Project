@@ -29,6 +29,11 @@ local Brainrots = {
 	{ name = "Esok Sekolah",          rarity = "Secret",    incomePerSec = 1100, spawnWeight = 25 },
 	{ name = "Karkerkar Kurkur",      rarity = "Secret",    incomePerSec = 1200, spawnWeight = 25 },
 	{ name = "Matteo",                rarity = "Secret",    incomePerSec = 1300, spawnWeight = 25 },
+	-- Divine
+	{ name = "Ballerino Lololo",    rarity = "Divine", incomePerSec = 2500, spawnWeight = 15 },
+	{ name = "Crab Chef",           rarity = "Divine", incomePerSec = 2750, spawnWeight = 15 },
+	{ name = "Garama",              rarity = "Divine", incomePerSec = 3000, spawnWeight = 10 },
+	{ name = "Strawberry Elephant", rarity = "Divine", incomePerSec = 3500, spawnWeight = 10 },
 }
 
 -- Level/Income scaling by rarity (v2 — Max Level 50)
@@ -39,6 +44,7 @@ Brainrots.RarityScaling = {
 	Legendary = { incomeScale = 0.30, costMult = 10 },
 	Mythic    = { incomeScale = 0.30, costMult = 10 },
 	Secret    = { incomeScale = 0.30, costMult = 10 },
+	Divine 	  = { incomeScale = 0.35, costMult = 10 },
 }
 
 Brainrots.MaxLevel = 50

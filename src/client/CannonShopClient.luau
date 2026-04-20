@@ -3,7 +3,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
+local Util = require(ReplicatedStorage.Util)
 local Config = require(ReplicatedStorage.Config)
 local Remotes = require(ReplicatedStorage.Remotes)
 
@@ -170,7 +170,7 @@ end
 
 local function costText(baseCost, currentPower)
 	local cost = computeCost(baseCost, currentPower)
-	return cost == 0 and "FREE" or ("$" .. tostring(cost))
+	return cost == 0 and "FREE" or (Util.formatMoney(cost))
 end
 
 local function refreshUI()

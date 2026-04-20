@@ -12,7 +12,7 @@ local RarityColors = {
 	Legendary = Color3.fromRGB(255, 170, 0),
 	Mythic = Color3.fromRGB(255, 50, 50),
 	Secret = Color3.fromRGB(50, 50, 50),
-	["Brainrot God"] = Color3.fromRGB(255, 0, 100),
+	Divine = Color3.fromRGB(209, 35, 232),
 }
 
 local LEVEL_COLOR = Color3.fromRGB(255, 215, 0)        -- gold
@@ -416,11 +416,10 @@ function BrainrotUI.applyMaxLevelGlow(model)
 
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "MaxGlow"
-	highlight.FillColor = MAX_GLOW_COLOR
-	highlight.FillTransparency = 0.7
+	highlight.FillTransparency = 1           -- no fill tint at all
 	highlight.OutlineColor = MAX_GLOW_COLOR
-	highlight.OutlineTransparency = 0
-	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.OutlineTransparency = 0.1      -- subtle outline only
+	highlight.DepthMode = Enum.HighlightDepthMode.Occluded  -- hidden behind walls/distance
 	highlight.Parent = model
 end
 

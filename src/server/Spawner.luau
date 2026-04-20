@@ -13,7 +13,7 @@ local ZONES = {
 	{ zone = "SpawnZonesLegendary",   models = "LegendaryBrainRotModels",    rarity = "Legendary",    inner = "LegendarySpawnZone" },
 	{ zone = "SpawnZonesMythic",      models = "MythicBrainRotModels",       rarity = "Mythic",       inner = "MythicSpawnZone" },
 	{ zone = "SpawnZonesSecret",      models = "SecretBrainRotModels",       rarity = "Secret",       inner = "SecretSpawnZone" },
-	-- { zone = "SpawnZonesDivine",   models = "DivineBrainRotModels",       rarity = "Divine",       inner = "DivineSpawnZone" },
+	{ zone = "SpawnZonesDivine",   	  models = "DivineBrainRotModels",       rarity = "Divine",       inner = "DivineSpawnZone" },
 }
 
 print("[Spawner] Module loaded, ZONES count:", #ZONES)
@@ -203,7 +203,11 @@ function Spawner.spawnOne(state)
 	clone:SetAttribute("Rarity", brainrotData.rarity)
 	clone:SetAttribute("IncomePerSec", brainrotData.incomePerSec)
 	clone:SetAttribute("Name", brainrotData.name)
-
+	for _, p in clone:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.CanQuery = false
+		end
+	end
 	local despawnTime = math.random(Config.DespawnTimeMin, Config.DespawnTimeMax)
 	clone:SetAttribute("DespawnRemaining", despawnTime)
 	clone:SetAttribute("DespawnPaused", false)

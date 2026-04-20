@@ -49,6 +49,7 @@ local modelFolders = {
 	Legendary = ServerStorage:WaitForChild("LegendaryBrainRotModels"),
 	Mythic    = ServerStorage:WaitForChild("MythicBrainRotModels"),
 	Secret    = ServerStorage:WaitForChild("SecretBrainRotModels"),
+	Divine    = ServerStorage:WaitForChild("DivineBrainRotModels"),
 }
 
 local migrations = {}

@@ -6,7 +6,8 @@ local Config = {
 	MaxPlayers = 5,
 	IncomeTickRate = 1,
 	PlacementYOffset = -0.5,
-
+	UpgradeSoundId = "rbxassetid://76834925120308",
+	
 	-- Spawner
 	SpawnInterval = 3,
 	MaxSpawns = 10,
