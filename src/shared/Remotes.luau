@@ -5,7 +5,7 @@ local RunService = game:GetService("RunService")
 
 local Remotes = {}
 
-local remoteNames = { "BaseAssigned", "CollectSlot", "TeleportHomeEvent", "TeleportRequest" }
+local remoteNames = { "BaseAssigned", "CollectSlot", "TeleportHomeEvent", "TeleportRequest", "UpgradeCannon" }
 
 if RunService:IsServer() then
 	-- Server creates the folder and remotes

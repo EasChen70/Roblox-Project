@@ -20,6 +20,16 @@ local Config = {
 	CarryOffset = Vector3.new(0, 3, 0),
 	CarryRotation = CFrame.Angles(0, math.rad(180), 0),
 	CarryAnimationId = "rbxassetid://76257603071803",
+
+	--CannonShop
+	CannonCostScale = 1.1,  -- cost multiplier per power level owned
+	CannonUpgradeCosts = {
+		{amount = 1,  cost = 500},
+		{amount = 5,  cost = 2500},
+		{amount = 10, cost = 5000},
+	},
+
+
 }
 
 return Config

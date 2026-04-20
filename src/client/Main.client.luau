@@ -3,7 +3,7 @@ local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Remotes = require(ReplicatedStorage.Remotes)
-
+local CannonShopClient = require(script.Parent.CannonShopClient)
 local player = Players.LocalPlayer
 local myBaseName = nil
 
@@ -113,3 +113,5 @@ Remotes.CollectSlot.OnClientEvent:Connect(function()
 		sfx:Destroy()
 	end)
 end)
+
+CannonShopClient.start()

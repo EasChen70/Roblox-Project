@@ -4,7 +4,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local Config = require(ReplicatedStorage.Config)
 local Remotes = require(ReplicatedStorage.Remotes)
-
+local CannonShop = require(ServerScriptService.CannonShop)
 local Base = require(ServerScriptService.Base)
 local Spawner = require(ServerScriptService.Spawner)
 local Pickup = require(ServerScriptService.Pickup)
@@ -52,3 +52,5 @@ end)
 Pickup.onEquipChanged(function(player)
 	Placement.refreshPrompts(player)
 end)
+
+CannonShop.init()

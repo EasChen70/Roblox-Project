@@ -1,0 +1,63 @@
+-- server/CannonShop.luau
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+local Config = require(ReplicatedStorage.Config)
+local Remotes = require(ReplicatedStorage.Remotes)
+local PlayerData = require(ServerScriptService.PlayerData)
+
+local CannonShop = {}
+
+local function getCannonPower(player)
+	return player:GetAttribute("CannonPower") or 0
+end
+
+local function setCannonPower(player, value)
+	player:SetAttribute("CannonPower", value)
+end
+
+local function findUpgrade(amount)
+	for _, entry in Config.CannonUpgradeCosts do
+		if entry.amount == amount then
+			return entry
+		end
+	end
+	return nil
+end
+
+-- Actual cost = baseCost * scale^currentPower
+local function computeCost(baseCost, currentPower)
+	if currentPower == 0 then return 0 end  -- ADD THIS
+	return math.floor(baseCost * (Config.CannonCostScale ^ currentPower))
+end
+
+function CannonShop.init()
+	Remotes.UpgradeCannon.OnServerEvent:Connect(function(player, amount)
+		local upgrade = findUpgrade(amount)
+		if not upgrade then
+			warn("[CannonShop] Invalid amount from", player.Name, amount)
+			return
+		end
+
+		local leaderstats = player:FindFirstChild("leaderstats")
+		if not leaderstats then return end
+		local money = leaderstats:FindFirstChild("Money")
+		if not money then return end
+
+		local currentPower = player:GetAttribute("CannonPower") or 0
+		local actualCost = computeCost(upgrade.cost, currentPower)
+
+		if money.Value < actualCost then return end
+
+		money.Value -= actualCost
+		local newPower = currentPower + upgrade.amount
+		player:SetAttribute("CannonPower", newPower)
+
+		PlayerData.requestSave(player)
+		print("[CannonShop]", player.Name, "upgraded cannon +", upgrade.amount, "→ Power:", newPower, "Cost was:", actualCost)
+	end)
+end
+
+return CannonShop

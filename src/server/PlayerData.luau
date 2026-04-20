@@ -172,6 +172,7 @@ local function readLiveState(player, data)
 
 		if money then data.money = money.Value end
 		if rebirths then data.rebirths = rebirths.Value end
+		data.cannonPower = player:GetAttribute("CannonPower") or 0
 	end
 
 	data.slots = readSlots(player)
@@ -264,6 +265,7 @@ function PlayerData.load(player)
 
 	leaderstats.Money.Value = loadedData.money or 0
 	leaderstats.Rebirths.Value = loadedData.rebirths or 0
+	player:SetAttribute("CannonPower", loadedData.cannonPower or 0)
 
 	print("[PlayerData] Loaded", player.Name, "— Money:", loadedData.money, "Slots:", PlayerData.countSlots(loadedData.slots or {}), "Inventory:", #(loadedData.inventory or {}))
 
