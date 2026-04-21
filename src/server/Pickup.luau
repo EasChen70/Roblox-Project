@@ -510,27 +510,44 @@ end)
 -- Boundary stash trigger
 ------------------------------------------------
 
-local boundary = game.Workspace.SpawnZones:WaitForChild("Boundary")
 local stashDebounce = {}
 
-boundary.TouchEnded:Connect(function(hit)
-	local character = hit.Parent
-	if not character then return end
+local spawnZoneFolders = {
+    game.Workspace:WaitForChild("SpawnZones"),
+    game.Workspace:WaitForChild("SpawnZonesRare"),
+    game.Workspace:WaitForChild("SpawnZonesEpic"),
+    game.Workspace:WaitForChild("SpawnZonesLegendary"),
+    game.Workspace:WaitForChild("SpawnZonesMythic"),
+    game.Workspace:WaitForChild("SpawnZonesSecret"),
+    game.Workspace:WaitForChild("SpawnZonesDivine"),
+}
 
-	local player = Players:GetPlayerFromCharacter(character)
-	if not player then return end
-	if not carrying[player] then return end
-	if equipped[player] then return end
+for _, folder in spawnZoneFolders do
+    local boundary = folder:WaitForChild("Boundary", 10)
+    if not boundary then
+        warn("[Pickup] No Boundary found in", folder.Name)
+        continue
+    end
 
-	if stashDebounce[player] then return end
-	stashDebounce[player] = true
+    boundary.TouchEnded:Connect(function(hit)
+        local character = hit.Parent
+        if not character then return end
 
-	Pickup.stash(player)
+        local player = Players:GetPlayerFromCharacter(character)
+        if not player then return end
+        if not carrying[player] then return end
+        if equipped[player] then return end
 
-	task.delay(1, function()
-		stashDebounce[player] = nil
-	end)
-end)
+        if stashDebounce[player] then return end
+        stashDebounce[player] = true
+
+        Pickup.stash(player)
+
+        task.delay(1, function()
+            stashDebounce[player] = nil
+        end)
+    end)
+end
 
 Remotes.DropBrainrot.OnServerEvent:Connect(function(player)
 	if not carrying[player] then return end
