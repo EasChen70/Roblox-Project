@@ -197,7 +197,7 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 
 					if newLevel >= Brainrots.MaxLevel then
 						BrainrotUI.setUpgradeBillboardMax(upgradeBillboard)
-						BrainrotUI.applyMaxLevelGlow(clone)
+						Remotes.MaxLevelGlow:FireAllClients(clone)
 					else
 						local nextCost = Brainrots.getUpgradeCost(baseIncome, rarity, newLevel)
 						BrainrotUI.updateUpgradeBillboard(upgradeBillboard, nextCost, newLevel)
@@ -215,7 +215,7 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 		-- If already at max level on placement/hydrate, reflect that now
 		if level >= Brainrots.MaxLevel then
 			BrainrotUI.setUpgradeBillboardMax(upgradeBillboard)
-			BrainrotUI.applyMaxLevelGlow(clone)
+			Remotes.MaxLevelGlow:FireAllClients(clone)
 		end
 	end
 end

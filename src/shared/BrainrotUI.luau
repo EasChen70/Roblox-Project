@@ -2,8 +2,9 @@ local BrainrotUI = {}
 
 local Util = require(game.ReplicatedStorage.Util)
 local Brainrots = require(game.ReplicatedStorage.Brainrots)
+local Players = game:GetService("Players")
 
-local MAX_VISIBILITY_DISTANCE = 100
+local MAX_VISIBILITY_DISTANCE = 40
 
 local RarityColors = {
 	Common = Color3.fromRGB(85, 255, 85),
@@ -15,10 +16,10 @@ local RarityColors = {
 	Divine = Color3.fromRGB(209, 35, 232),
 }
 
-local LEVEL_COLOR = Color3.fromRGB(255, 215, 0)        -- gold
-local UPGRADE_PINK = Color3.fromRGB(255, 60, 160)      -- main billboard bg
+local LEVEL_COLOR = Color3.fromRGB(255, 215, 0)
+local UPGRADE_PINK = Color3.fromRGB(255, 60, 160)
 local UPGRADE_TEXT = Color3.fromRGB(255, 255, 255)
-local MAX_GLOW_COLOR = Color3.fromRGB(255, 215, 0)     -- gold
+local MAX_GLOW_COLOR = Color3.fromRGB(255, 215, 0)
 
 local function makeLabel(name, text, color, order, size)
 	local label = Instance.new("TextLabel")
@@ -39,11 +40,10 @@ local function makeLabel(name, text, color, order, size)
 	return label
 end
 
-local function createBillboardGui(model, studsOffset)
+local function createBillboardGui(model, studsOffset, alwaysOnTop)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "BrainrotBillboard"
 	billboard.Size = UDim2.new(8, 0, 5, 0)
-
 	billboard.MaxDistance = MAX_VISIBILITY_DISTANCE
 
 	if not studsOffset then
@@ -52,7 +52,7 @@ local function createBillboardGui(model, studsOffset)
 	end
 
 	billboard.StudsOffset = studsOffset
-	billboard.AlwaysOnTop = true
+	billboard.AlwaysOnTop = alwaysOnTop or false
 	billboard.LightInfluence = 0
 	billboard.Parent = model.PrimaryPart
 
@@ -79,21 +79,17 @@ local function formatLevelText(level, maxLevel)
 	return "Level " .. level
 end
 
--- Head billboard for placed brainrots.
--- data = { name, rarity, incomePerSec, level?, maxLevel? }
--- If level is provided, renders gold "Level X" (or "Max Level") line at top.
 function BrainrotUI.createBillboard(model, data)
 	local rarity = data.rarity or "Common"
 	local rarityColor = RarityColors[rarity] or RarityColors.Common
 	local level = data.level
 	local maxLevel = data.maxLevel
 
-	local billboard, frame = createBillboardGui(model)
+	local billboard, frame = createBillboardGui(model, nil, false)
 	if level then
 		billboard.Size = UDim2.new(8, 0, 6, 0)
 	end
 
-	-- Level label (only for placed brainrots) — rendered ABOVE income
 	if level then
 		local levelLabel = makeLabel("Level", formatLevelText(level, maxLevel), LEVEL_COLOR, 0, 24)
 		levelLabel.Parent = frame
@@ -118,7 +114,6 @@ function BrainrotUI.createBillboard(model, data)
 	return billboard
 end
 
--- Update head billboard after upgrade.
 function BrainrotUI.updateBillboardLevel(model, newLevel, newIncome, maxLevel)
 	local billboard = model.PrimaryPart and model.PrimaryPart:FindFirstChild("BrainrotBillboard")
 	if not billboard then return end
@@ -141,7 +136,7 @@ function BrainrotUI.createWorldBillboard(model, data)
 	local rarity = data.rarity or "Common"
 	local rarityColor = RarityColors[rarity] or RarityColors.Common
 
-	local billboard, frame = createBillboardGui(model, Vector3.new(0, 12, 0))
+	local billboard, frame = createBillboardGui(model, Vector3.new(0, 12, 0), true)
 	billboard.Size = UDim2.new(8, 0, 6, 0)
 
 	local timerLabel = makeLabel("Timer", "", Color3.fromRGB(255, 255, 255), 0, 24)
@@ -186,13 +181,6 @@ function BrainrotUI.createWorldBillboard(model, data)
 	return billboard
 end
 
-------------------------------------------------
--- UPGRADE SIGN (physical pink brick with SurfaceGui, in front of slot)
--- Static — does NOT rotate to face camera like BillboardGui does.
--- Returns a Model named "UpgradeBillboard" parented to the slot,
--- with PrimaryPart = pink brick hosting the SurfaceGui and ProximityPrompt.
-------------------------------------------------
-
 local function getUpgradeSignCFrame(slot)
 	local collectButton = slot:FindFirstChild("CollectButton")
 	local point = slot:FindFirstChild("PlacementPoint")
@@ -202,29 +190,20 @@ local function getUpgradeSignCFrame(slot)
 	local pos
 
 	if collectButton then
-		-- Sit right above and slightly back from the CollectButton edge
-		-- Lower height — should be at roughly hip/waist level, not above the brainrot
 		local pullBack = forward * 2
 		pos = collectButton.Position + pullBack + Vector3.new(0, 1.5, 0)
 	else
 		pos = point.Position + forward * 3 + Vector3.new(0, 1.2, 0)
 	end
 
-	-- Face outward (toward the player)
 	local facingDir = -forward
-
-	-- Tilt back ~15 degrees so the sign leans toward the camera like in reference
-	-- Rotation axis is the sign's right vector (horizontal, perpendicular to facing)
 	local tiltAngle = math.rad(15)
-
-	-- Build CFrame: position + facing + tilt
 	local baseCFrame = CFrame.new(pos, pos + facingDir)
 	local tiltedCFrame = baseCFrame * CFrame.Angles(tiltAngle, 0, 0)
 
 	return tiltedCFrame
 end
 
--- data = { rarity, level, baseIncome }
 function BrainrotUI.createUpgradeBillboard(slot, data)
 	local rarity = data.rarity
 	local level = data.level or 1
@@ -236,10 +215,9 @@ function BrainrotUI.createUpgradeBillboard(slot, data)
 	local existing = slot:FindFirstChild("UpgradeBillboard")
 	if existing then existing:Destroy() end
 
-	-- Physical pink sign (static, rendered in 3D world)
 	local sign = Instance.new("Part")
 	sign.Name = "UpgradeAnchor"
-	sign.Size = Vector3.new(4, 1.5, 0.1)  -- thinner
+	sign.Size = Vector3.new(4, 1.5, 0.1)
 	sign.Material = Enum.Material.SmoothPlastic
 	sign.Color = UPGRADE_PINK
 	sign.CanCollide = false
@@ -248,7 +226,6 @@ function BrainrotUI.createUpgradeBillboard(slot, data)
 	sign.TopSurface = Enum.SurfaceType.Smooth
 	sign.BottomSurface = Enum.SurfaceType.Smooth
 
-	-- Black outline (like the reference)
 	local outline = Instance.new("SelectionBox")
 	outline.Name = "Outline"
 	outline.Adornee = sign
@@ -264,7 +241,6 @@ function BrainrotUI.createUpgradeBillboard(slot, data)
 	model.PrimaryPart = sign
 	model.Parent = slot
 
-	-- SurfaceGui on the front face of the sign
 	local surfaceGui = Instance.new("SurfaceGui")
 	surfaceGui.Name = "UpgradeGui"
 	surfaceGui.Face = Enum.NormalId.Front
@@ -279,7 +255,6 @@ function BrainrotUI.createUpgradeBillboard(slot, data)
 	frame.BackgroundTransparency = 1
 	frame.Parent = surfaceGui
 
-	-- Top row: up-arrow + cost
 	local topRow = Instance.new("Frame")
 	topRow.Name = "TopRow"
 	topRow.Size = UDim2.new(1, 0, 0.65, 0)
@@ -320,7 +295,6 @@ function BrainrotUI.createUpgradeBillboard(slot, data)
 	costStroke.Thickness = 3
 	costStroke.Parent = costLabel
 
-	-- Bottom row: Level X -> Level X+1
 	local transitionLabel = Instance.new("TextLabel")
 	transitionLabel.Name = "Transition"
 	transitionLabel.Text = "Level " .. level .. " → Level " .. (level + 1)
@@ -337,12 +311,12 @@ function BrainrotUI.createUpgradeBillboard(slot, data)
 	transitionStroke.Thickness = 2
 	transitionStroke.Parent = transitionLabel
 
-	-- ClickDetector — player hovers and clicks/taps the sign to upgrade
 	local clickDetector = Instance.new("ClickDetector")
-	clickDetector.Name = "UpgradePrompt"  -- keep name for compatibility with Placement.luau lookup
+	clickDetector.Name = "UpgradePrompt"
 	clickDetector.MaxActivationDistance = 16
-	clickDetector.CursorIcon = ""  -- default hand cursor on hover
+	clickDetector.CursorIcon = ""
 	clickDetector.Parent = sign
+
 	return model
 end
 
@@ -404,23 +378,8 @@ function BrainrotUI.setUpgradeBillboardMax(billboardModel)
 
 	local prompt = sign:FindFirstChild("UpgradePrompt")
 	if prompt then
-		prompt.MaxActivationDistance = 0  -- disable clicks
+		prompt.MaxActivationDistance = 0
 	end
-end
-
-function BrainrotUI.applyMaxLevelGlow(model)
-	if not model then return end
-
-	local existing = model:FindFirstChild("MaxGlow")
-	if existing then existing:Destroy() end
-
-	local highlight = Instance.new("Highlight")
-	highlight.Name = "MaxGlow"
-	highlight.FillTransparency = 1           -- no fill tint at all
-	highlight.OutlineColor = MAX_GLOW_COLOR
-	highlight.OutlineTransparency = 0.1      -- subtle outline only
-	highlight.DepthMode = Enum.HighlightDepthMode.Occluded  -- hidden behind walls/distance
-	highlight.Parent = model
 end
 
 return BrainrotUI

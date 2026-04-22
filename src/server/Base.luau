@@ -122,8 +122,8 @@ local function createBaseSign(base, player)
 	incomeLabel.Parent = info
 
 	local incomeStroke = Instance.new("UIStroke")
-	incomeStroke.Color = Color3.fromRGB(255, 255, 255)
-	incomeStroke.Thickness = 1.5
+	incomeStroke.Color = Color3.fromRGB(0, 0, 0)
+	incomeStroke.Thickness = 2.5
 	incomeStroke.Parent = incomeLabel
 end
 

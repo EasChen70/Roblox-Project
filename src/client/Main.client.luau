@@ -23,6 +23,7 @@ local function createYourBaseIndicator(baseName)
 	billboard.Size = UDim2.new(10, 0, 3, 0)
 	billboard.StudsOffset = Vector3.new(0, 6, 0)
 	billboard.AlwaysOnTop = true
+	billboard.MaxDistance = 80
 	billboard.LightInfluence = 0
 	billboard.Parent = sign
 
@@ -180,5 +181,34 @@ Remotes.UpgradeSound.OnClientEvent:Connect(function()
 		sfx:Destroy()
 	end)
 end)
+Remotes.MaxLevelGlow.OnClientEvent:Connect(function(model)
+	if not model or not model.Parent then return end
 
+	local existing = model:FindFirstChild("MaxGlow")
+	if existing then existing:Destroy() end
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "MaxGlow"
+	highlight.FillTransparency = 1
+	highlight.OutlineColor = Color3.fromRGB(255, 215, 0)
+	highlight.OutlineTransparency = 0.1
+	highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+
+	task.spawn(function()
+		while model.Parent do
+			local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			local primaryPart = model.PrimaryPart or model:FindFirstChildOfClass("BasePart")
+			if hrp and primaryPart then
+				local dist = (hrp.Position - primaryPart.Position).Magnitude
+				if dist < 80 then
+					highlight.Parent = model
+				else
+					highlight.Parent = nil
+				end
+			end
+			task.wait(0.5)
+		end
+		highlight:Destroy()
+	end)
+end)
 CannonShopClient.start()
