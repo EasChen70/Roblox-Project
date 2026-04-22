@@ -99,7 +99,7 @@ end
 -- ── Cannon power billboards ───────────────────────────────────────────────────
 
 local function getCannonPower()
-	return player:GetAttribute("CannonPower") or 0
+	return player:GetAttribute("CannonPower") or 1
 end
 
 local function updateCannonBillboards()
@@ -112,7 +112,7 @@ local function updateCannonBillboards()
 			billboard.Name           = "PowerBillboard"
 			billboard.Size           = UDim2.new(0, 120, 0, 60)
 			local _, size = cannon:GetBoundingBox()
-            billboard.StudsOffset = Vector3.new(0, (size.Y / 2) + 8, 0)
+			billboard.StudsOffset    = Vector3.new(0, (size.Y / 2) + 8, 0)
 			billboard.AlwaysOnTop    = true
 			billboard.LightInfluence = 0
 			billboard.Parent         = cannon
@@ -160,17 +160,16 @@ local function updateBillboardVisibility()
 	end
 end
 
-
 -- ── UI ────────────────────────────────────────────────────────────────────────
 
-local function computeCost(baseCost, currentPower)
-	if currentPower == 0 then return 0 end
+local function computeCost(baseCost, currentPower, amount)
+	if currentPower == 1 and amount == 1 then return 0 end
 	return math.floor(baseCost * (Config.CannonCostScale ^ currentPower))
 end
 
-local function costText(baseCost, currentPower)
-	local cost = computeCost(baseCost, currentPower)
-	return cost == 0 and "FREE" or (Util.formatMoney(cost))
+local function costText(baseCost, currentPower, amount)
+	local cost = computeCost(baseCost, currentPower, amount)
+	return cost == 0 and "FREE" or Util.formatMoney(cost)
 end
 
 local function refreshUI()
@@ -181,7 +180,7 @@ local function refreshUI()
 			row.label.Text = "+" .. row.entry.amount .. " Power\n" .. power .. " → " .. (power + row.entry.amount)
 		end
 		if row.btn and row.btn.Active then
-			row.btn.Text = costText(row.entry.cost, power)
+			row.btn.Text = costText(row.entry.cost, power, row.entry.amount)
 		end
 	end
 end
@@ -203,7 +202,7 @@ local function onPowerChanged()
 	for _, row in rowRefs do
 		if row.btn then
 			row.btn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
-			row.btn.Text             = costText(row.entry.cost, getCannonPower())
+			row.btn.Text             = costText(row.entry.cost, getCannonPower(), row.entry.amount)
 			row.btn.Active           = true
 		end
 	end
@@ -236,7 +235,7 @@ local function buildRow(parent, yPos, entry)
 	btn.Size     = UDim2.new(0.32, 0, 0.55, 0)
 	btn.Position = UDim2.new(0.65, 0, 0.22, 0)
 	btn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
-	btn.Text       = costText(entry.cost, power)
+	btn.Text       = costText(entry.cost, power, entry.amount)
 	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	btn.Font       = Enum.Font.GothamBold
 	btn.TextScaled = true
@@ -246,30 +245,30 @@ local function buildRow(parent, yPos, entry)
 	table.insert(rowRefs, {label = label, btn = btn, entry = entry})
 
 	btn.MouseButton1Click:Connect(function()
-        if not btn.Active then return end
+		if not btn.Active then return end
 
-        local currentCost = computeCost(entry.cost, getCannonPower())
-        local money = player:FindFirstChild("leaderstats") and player.leaderstats:FindFirstChild("Money")
+		local currentPower = getCannonPower()
+		local currentCost = computeCost(entry.cost, currentPower, entry.amount)
+		local money = player:FindFirstChild("leaderstats") and player.leaderstats:FindFirstChild("Money")
 
-        if money and money.Value < currentCost then
-            -- Can't afford — flash red X then restore
-            btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-            btn.Text = "X"
-            task.delay(0.8, function()
-                if btn and btn.Parent then
-                    btn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
-                    btn.Text = costText(entry.cost, getCannonPower())
-                end
-            end)
-            return
-        end
+		if money and money.Value < currentCost then
+			btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+			btn.Text = "X"
+			task.delay(0.8, function()
+				if btn and btn.Parent then
+					btn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
+					btn.Text = costText(entry.cost, getCannonPower(), entry.amount)
+				end
+			end)
+			return
+		end
 
-        purchasePending      = true
-        btn.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
-        btn.Text             = "..."
-        btn.Active           = false
-        Remotes.UpgradeCannon:FireServer(entry.amount)
-    end)
+		purchasePending      = true
+		btn.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
+		btn.Text             = "..."
+		btn.Active           = false
+		Remotes.UpgradeCannon:FireServer(entry.amount)
+	end)
 end
 
 local function openShop()
@@ -362,26 +361,26 @@ function CannonShopClient.start()
 		updateCannonBillboards()
 	end)
 
-    RunService.Heartbeat:Connect(function()
-        local now = tick()
-        if now - lastCheck < CHECK_INTERVAL then return end
-        lastCheck = now
+	RunService.Heartbeat:Connect(function()
+		local now = tick()
+		if now - lastCheck < CHECK_INTERVAL then return end
+		lastCheck = now
 
-        if purchasePending then return end
+		if purchasePending then return end
 
-        local dist = getClosestDist()
+		local dist = getClosestDist()
 
-        if not isOpen and not manuallyClosed and dist <= OPEN_DIST then
-            openShop()
-        elseif isOpen and dist > CLOSE_DIST then
-            manuallyClosed = false
-            closeShop()
-        elseif not isOpen and manuallyClosed and dist > CLOSE_DIST then
-            manuallyClosed = false
-        end
+		if not isOpen and not manuallyClosed and dist <= OPEN_DIST then
+			openShop()
+		elseif isOpen and dist > CLOSE_DIST then
+			manuallyClosed = false
+			closeShop()
+		elseif not isOpen and manuallyClosed and dist > CLOSE_DIST then
+			manuallyClosed = false
+		end
 
-        updateBillboardVisibility()  -- ADD THIS
-    end)
+		updateBillboardVisibility()
+	end)
 end
 
 return CannonShopClient

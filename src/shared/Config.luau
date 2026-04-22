@@ -30,7 +30,6 @@ local Config = {
 		{amount = 10, cost = 5000},
 	},
 
-
 }
 
 return Config
