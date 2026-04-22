@@ -37,6 +37,23 @@ local zoneStates = {}
 -- Eliminates DescendantAdded connection leak (no longer watching Workspace)
 local onGrabCallback = nil
 
+local function rollMutation()
+	local roll = math.random()
+	if roll < Config.MutationDiamondChance then
+		return "Diamond"
+	elseif roll < Config.MutationDiamondChance + Config.MutationGoldChance then
+		return "Gold"
+	end
+	return "None"
+end
+
+local function getModelFolderName(rarity, mutation)
+	if mutation and mutation ~= "None" then
+		return mutation .. rarity .. "BrainRotModels"
+	end
+	return rarity .. "BrainRotModels"
+end
+
 function Spawner.onGrab(cb)
 	onGrabCallback = cb
 end
@@ -56,7 +73,9 @@ local function initZones()
 
 		local spCount = 0
 		for _, child in folder:GetChildren() do
-			if child.Name:sub(1, 2) == "SP" then spCount += 1 end
+			if child.Name:sub(1, 2) == "SP" then 
+				spCount += 1 
+			end
 		end
 		print("[Spawner]   SP points found:", spCount)
 		if spCount == 0 then
@@ -187,9 +206,12 @@ function Spawner.spawnOne(state)
 	local brainrotData = pickBrainrot(state.brainrotPool)
 	print("[Spawner] " .. state.rarity .. " picked:", brainrotData.name)
 
-	local template = state.modelsFolder:FindFirstChild(brainrotData.name)
+	local mutation = rollMutation()
+	local folderName = getModelFolderName(state.rarity, mutation)
+	local modelsFolder = ServerStorage:FindFirstChild(folderName) or state.modelsFolder
+	local template = modelsFolder:FindFirstChild(brainrotData.name)
 	if not template then
-		warn("[Spawner] FAIL: no model for '" .. brainrotData.name .. "' in " .. state.modelsFolder.Name)
+		warn("[Spawner] FAIL: model '" .. brainrotData.name .. "' not found in folder:", modelsFolder.Name)
 		return
 	end
 
@@ -201,8 +223,10 @@ function Spawner.spawnOne(state)
 	local clone = template:Clone()
 	clone:PivotTo(CFrame.new(point.Position + Vector3.new(0, -2, 0)))
 	clone:SetAttribute("Rarity", brainrotData.rarity)
-	clone:SetAttribute("IncomePerSec", brainrotData.incomePerSec)
+	local mutMult = Config.MutationMultipliers[mutation] or 1.0
+	clone:SetAttribute("IncomePerSec", math.floor(brainrotData.incomePerSec * mutMult))
 	clone:SetAttribute("Name", brainrotData.name)
+	clone:SetAttribute("Mutation", mutation)
 	for _, p in clone:GetDescendants() do
 		if p:IsA("BasePart") then
 			p.CanQuery = false
@@ -234,7 +258,12 @@ function Spawner.spawnOne(state)
 	print("[Spawner] Spawned", brainrotData.name, "at", point.Name, "(" .. state.rarity .. ")")
 
 	Spawner.startDespawnTimer(clone)
-	BrainrotUI.createWorldBillboard(clone, brainrotData)
+	BrainrotUI.createWorldBillboard(clone, {
+		name     = brainrotData.name,
+		rarity   = brainrotData.rarity,
+		incomePerSec = clone:GetAttribute("IncomePerSec"),  -- already mutated
+		mutation = mutation,
+	})
 
 	return clone
 end

@@ -127,30 +127,56 @@ local function showDropButton()
 	screen.Parent = player.PlayerGui
 
 	local btn = Instance.new("TextButton")
-	btn.Size        = UDim2.new(0, 160, 0, 60)
+	btn.Size = UDim2.new(0.15, 0, 0.08, 0)
 	btn.Position = UDim2.new(0.5, 0, 0.72, 0)
 	btn.AnchorPoint = Vector2.new(0.5, 0.5)
 	btn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-	btn.Text       = "Drop"
+	btn.Text = "Drop"
 	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	btn.Font       = Enum.Font.GothamBold
+	btn.Font = Enum.Font.DenkOne
 	btn.TextScaled = true
-	btn.Parent     = screen
+	btn.AutoButtonColor = true -- Provides built-in click feedback
+	btn.Parent = screen
+
+	-- Texture Overlay
+	local texture = Instance.new("ImageLabel")
+	texture.Name = "ButtonTexture"
+	texture.BackgroundTransparency = 1
+	texture.Image = "rbxassetid://6927295847"
+	texture.Size = UDim2.new(1, 0, 1, 0)
+	texture.ScaleType = Enum.ScaleType.Stretch -- Ensures it fills the whole button
+	texture.ImageTransparency = 0.4 -- Lower this if you want the texture stronger
+	texture.ZIndex = 1 -- Sits above the background but below the text
+	texture.Parent = btn
+
+	-- Important: Sync the corner with the button
+	Instance.new("UICorner", texture).CornerRadius = UDim.new(0, 10)
+
+	-- Constraints
+	local aspect = Instance.new("UIAspectRatioConstraint")
+	aspect.AspectRatio = 2.66 
+	aspect.Parent = btn
+
 	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
 
-	local stroke = Instance.new("UIStroke")
-	stroke.Color     = Color3.fromRGB(0, 0, 0)
-	stroke.Thickness = 2
-	stroke.Parent    = btn
+	-- White button border (Placed on a high ZIndex to stay visible)
+	local buttonStroke = Instance.new("UIStroke")
+	buttonStroke.Color = Color3.fromRGB(255, 255, 255)
+	buttonStroke.Thickness = 2
+	buttonStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	buttonStroke.Parent = btn
 
-	local vp = workspace.CurrentCamera.ViewportSize
-	local scale = math.clamp(math.min(vp.X / 480, vp.Y / 720), 0.5, 1.2)
-	local uiScale = Instance.new("UIScale")
-	uiScale.Scale  = scale
-	uiScale.Parent = btn
+	-- Black text outline
+	local textStroke = Instance.new("UIStroke")
+	textStroke.Color = Color3.fromRGB(0, 0, 0)
+	textStroke.Thickness = 2
+	textStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	textStroke.Parent = btn
 
 	btn.MouseButton1Click:Connect(function()
-		Remotes.DropBrainrot:FireServer()
+		if Remotes and Remotes.DropBrainrot then
+			Remotes.DropBrainrot:FireServer()
+		end
 	end)
 
 	dropButton = screen

@@ -30,6 +30,13 @@ local Config = {
 		{amount = 10, cost = 5000},
 	},
 
+	MutationGoldChance = 0.10,
+	MutationDiamondChance = 0.05,
+	MutationMultipliers = {
+		None = 1.0,
+		Gold = 1.5,
+		Diamond = 2.0,
+	}
 }
 
 return Config

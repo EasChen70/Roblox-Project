@@ -1,4 +1,3 @@
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local Remotes = require(ReplicatedStorage.Remotes)
@@ -16,15 +15,20 @@ local onDataChangedCallback = nil
 function Placement.onDataChanged(cb)
 	onDataChangedCallback = cb
 end
-
+local function getModelFolderName(rarity, mutation)
+    if mutation and mutation ~= "None" then
+        return mutation .. rarity .. "BrainRotModels"
+    end
+    return rarity .. "BrainRotModels"
+end
 local modelFolders = {
-	Common    = ServerStorage:WaitForChild("CommonBrainRotModels"),
-	Rare      = ServerStorage:WaitForChild("RareBrainRotModels"),
-	Epic      = ServerStorage:WaitForChild("EpicBrainRotModels"),
+	Common = ServerStorage:WaitForChild("CommonBrainRotModels"),
+	Rare = ServerStorage:WaitForChild("RareBrainRotModels"),
+	Epic = ServerStorage:WaitForChild("EpicBrainRotModels"),
 	Legendary = ServerStorage:WaitForChild("LegendaryBrainRotModels"),
-	Mythic    = ServerStorage:WaitForChild("MythicBrainRotModels"),
-	Secret    = ServerStorage:WaitForChild("SecretBrainRotModels"),
-	Divine    = ServerStorage:WaitForChild("DivineBrainRotModels"),
+	Mythic = ServerStorage:WaitForChild("MythicBrainRotModels"),
+	Secret = ServerStorage:WaitForChild("SecretBrainRotModels"),
+	Divine = ServerStorage:WaitForChild("DivineBrainRotModels"),
 }
 
 local bases = game.Workspace.Map.Bases
@@ -34,7 +38,9 @@ local bases = game.Workspace.Map.Bases
 local promptDebounce = {}
 
 local function withDebounce(key, fn)
-	if promptDebounce[key] then return end
+	if promptDebounce[key] then
+		return
+	end
 	promptDebounce[key] = true
 	fn()
 	task.delay(0.3, function()
@@ -69,7 +75,8 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 	local level = data.level or 1
 
 	-- Compute and set attributes based on level
-	local currentIncome = Brainrots.getIncomeAtLevel(baseIncome, rarity, level)
+	local mutation = clone:GetAttribute("Mutation") or "None"
+	local currentIncome = Brainrots.getIncomeWithMutation(baseIncome, rarity, level, mutation)
 	clone:SetAttribute("Level", level)
 	clone:SetAttribute("BaseIncome", baseIncome)
 	clone:SetAttribute("IncomePerSec", currentIncome)
@@ -85,18 +92,27 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 
 	pickupPrompt.Triggered:Connect(function(triggerPlayer)
 		withDebounce(slot, function()
-			if Base.getOwner(base) ~= triggerPlayer then return end
-			if Pickup.isCarrying(triggerPlayer) then return end
+			if Base.getOwner(base) ~= triggerPlayer then
+				return
+			end
+			if Pickup.isCarrying(triggerPlayer) then
+				return
+			end
 
 			local pickupLevel = clone:GetAttribute("Level") or 1
-			local success = Pickup.giveItem(triggerPlayer, name, rarity, baseIncome, pickupLevel)
-			if not success then return end
+			local mutation = clone:GetAttribute("Mutation") or "None"
+			local success = Pickup.giveItem(triggerPlayer, name, rarity, baseIncome, pickupLevel, mutation)
+			if not success then
+				return
+			end
 
 			clone:Destroy()
 
 			-- Clean up upgrade billboard for this slot
 			local ub = slot:FindFirstChild("UpgradeBillboard")
-			if ub then ub:Destroy() end
+			if ub then
+				ub:Destroy()
+			end
 
 			if onDataChangedCallback then
 				onDataChangedCallback(triggerPlayer)
@@ -120,7 +136,9 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 
 	sellPrompt.Triggered:Connect(function(triggerPlayer)
 		withDebounce(slot, function()
-			if Base.getOwner(base) ~= triggerPlayer then return end
+			if Base.getOwner(base) ~= triggerPlayer then
+				return
+			end
 
 			local stats = triggerPlayer:FindFirstChild("leaderstats")
 			if stats then
@@ -138,7 +156,9 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 				local bd = cb:FindFirstChild("CashDisplay")
 				if bd then
 					local lbl = bd:FindFirstChild("Amount")
-					if lbl then lbl.Text = "$0" end
+					if lbl then
+						lbl.Text = "$0"
+					end
 				end
 			end
 
@@ -146,7 +166,9 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 
 			-- Clean up upgrade billboard for this slot
 			local ub = slot:FindFirstChild("UpgradeBillboard")
-			if ub then ub:Destroy() end
+			if ub then
+				ub:Destroy()
+			end
 
 			if onDataChangedCallback then
 				onDataChangedCallback(triggerPlayer)
@@ -170,13 +192,19 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 		if upgradePrompt then
 			upgradePrompt.MouseClick:Connect(function(triggerPlayer)
 				withDebounce("upgrade_" .. slot.Name, function()
-					if Base.getOwner(base) ~= triggerPlayer then return end
+					if Base.getOwner(base) ~= triggerPlayer then
+						return
+					end
 
 					local currentLevel = clone:GetAttribute("Level") or 1
-					if currentLevel >= Brainrots.MaxLevel then return end
+					if currentLevel >= Brainrots.MaxLevel then
+						return
+					end
 
 					local cost = Brainrots.getUpgradeCost(baseIncome, rarity, currentLevel)
-					if not cost then return end
+					if not cost then
+						return
+					end
 
 					local stats = triggerPlayer:FindFirstChild("leaderstats")
 					local money = stats and stats:FindFirstChild("Money")
@@ -223,14 +251,20 @@ end
 function Placement.setup()
 	for _, base in bases:GetChildren() do
 		local slots = base:FindFirstChild("Slots")
-		if not slots then continue end
+		if not slots then
+			continue
+		end
 
 		for i = 1, Config.MaxSlots do
 			local slot = slots:FindFirstChild("Slot" .. i)
-			if not slot then continue end
+			if not slot then
+				continue
+			end
 
 			local point = slot:FindFirstChild("PlacementPoint")
-			if not point then continue end
+			if not point then
+				continue
+			end
 
 			local prompt = Instance.new("ProximityPrompt")
 			prompt.ActionText = "Place"
@@ -243,23 +277,31 @@ function Placement.setup()
 
 			prompt.Triggered:Connect(function(player)
 				withDebounce(slot, function()
-					if Base.getOwner(base) ~= player then return end
+					if Base.getOwner(base) ~= player then
+						return
+					end
 
 					local tool = Pickup.getInventoryTool(player)
-					if not tool then return end
+					if not tool then
+						return
+					end
 
-					if isSlotOccupied(slot) then return end
+					if isSlotOccupied(slot) then
+						return
+					end
 
 					local name = tool.Name
 					local rarity = tool:GetAttribute("Rarity")
-					local baseIncome = tool:GetAttribute("IncomePerSec")  -- Tool stores BASE income
+					local baseIncome = tool:GetAttribute("IncomePerSec") -- Tool stores BASE income
 					local level = tool:GetAttribute("Level") or 1
 
-					local folder = modelFolders[rarity]
-					if not folder then return end
-
-					local template = folder:FindFirstChild(name)
-					if not template then return end
+					local mutation = tool:GetAttribute("Mutation") or "None"
+					local folderName = getModelFolderName(rarity, mutation)
+					local folder = ServerStorage:FindFirstChild(folderName) or modelFolders[rarity]
+					local template = folder and folder:FindFirstChild(name)
+					if not template then
+						return
+					end
 
 					local clone = template:Clone()
 
@@ -271,7 +313,7 @@ function Placement.setup()
 					clone:SetAttribute("Name", name)
 					clone:SetAttribute("Rarity", rarity)
 					clone:SetAttribute("Placed", true)
-					-- Level, BaseIncome, IncomePerSec are set inside createSlotPrompts
+					clone:SetAttribute("Mutation", mutation)
 
 					for _, part in clone:GetDescendants() do
 						if part:IsA("BasePart") then
@@ -286,11 +328,7 @@ function Placement.setup()
 					local spawnPos = point.Position + placementOffset
 
 					if collectButton then
-						local targetFlat = Vector3.new(
-							collectButton.Position.X,
-							spawnPos.Y,
-							collectButton.Position.Z
-						)
+						local targetFlat = Vector3.new(collectButton.Position.X, spawnPos.Y, collectButton.Position.Z)
 						clone:PivotTo(CFrame.lookAt(spawnPos, targetFlat) * CFrame.Angles(0, math.rad(180), 0))
 					else
 						clone:PivotTo(CFrame.new(spawnPos))
@@ -307,6 +345,7 @@ function Placement.setup()
 						incomePerSec = currentIncome,
 						level = level,
 						maxLevel = Brainrots.MaxLevel,
+						mutation = mutation,
 					})
 
 					-- Wire pickup + sell + upgrade prompts via shared helper
@@ -343,20 +382,30 @@ function Placement.refreshPrompts(player)
 		end
 	end
 
-	if not playerBase then return end
+	if not playerBase then
+		return
+	end
 
 	local slots = playerBase:FindFirstChild("Slots")
-	if not slots then return end
+	if not slots then
+		return
+	end
 
 	for i = 1, Config.MaxSlots do
 		local slot = slots:FindFirstChild("Slot" .. i)
-		if not slot then continue end
+		if not slot then
+			continue
+		end
 
 		local point = slot:FindFirstChild("PlacementPoint")
-		if not point then continue end
+		if not point then
+			continue
+		end
 
 		local prompt = point:FindFirstChildOfClass("ProximityPrompt")
-		if not prompt then continue end
+		if not prompt then
+			continue
+		end
 
 		prompt.Enabled = Pickup.isItemEquipped(player) and not isSlotOccupied(slot)
 	end

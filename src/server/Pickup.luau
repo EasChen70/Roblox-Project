@@ -29,6 +29,16 @@ local modelFolders = {
 }
 
 ------------------------------------------------
+-- Helper
+------------------------------------------------
+local function getModelFolderName(rarity, mutation)
+    if mutation and mutation ~= "None" then
+        return mutation .. rarity .. "BrainRotModels"
+    end
+    return rarity .. "BrainRotModels"
+end
+
+------------------------------------------------
 -- Animation
 ------------------------------------------------
 
@@ -118,6 +128,7 @@ local function createBrainrotTool(player, data)
 	tool:SetAttribute("IncomePerSec", baseIncome)  -- Base income; actual display uses level
 	tool:SetAttribute("Level", level)
 	tool:SetAttribute("BrainrotTool", true)
+	tool:SetAttribute("Mutation", data.mutation or "None")
 
 	local handle = Instance.new("Part")
 	handle.Name = "Handle"
@@ -129,7 +140,8 @@ local function createBrainrotTool(player, data)
 
 	print("[Pickup] Created tool:", data.name, "L" .. level, "RequiresHandle:", tool.RequiresHandle, "Handle exists:", tool:FindFirstChild("Handle") ~= nil)
 
-	local folder = modelFolders[data.rarity]
+	local folderName = getModelFolderName(data.rarity, data.mutation or "None")
+	local folder = ServerStorage:FindFirstChild(folderName) or modelFolders[data.rarity]
 	local template = folder and folder:FindFirstChild(data.name)
 
 	if not template then
@@ -199,13 +211,15 @@ local function createBrainrotTool(player, data)
 		print("[Pickup] equip weld set for", data.name)
 
 		-- Billboard for carried visual: show level if > 1, otherwise plain
-		local currentIncome = Brainrots.getIncomeAtLevel(baseIncome, data.rarity, level)
+		local mutation = data.mutation or "None"
+		local currentIncome = Brainrots.getIncomeWithMutation(baseIncome, data.rarity, level, mutation)
 		BrainrotUI.createBillboard(visual, {
 			name = data.name,
 			rarity = data.rarity,
 			incomePerSec = currentIncome,
-			level = level > 1 and level or nil,  -- only show level if non-default
+			level = level > 1 and level or nil,
 			maxLevel = Brainrots.MaxLevel,
+			mutation = mutation,  -- ADD THIS
 		})
 
 		carrying[player] = visual
@@ -222,7 +236,9 @@ local function createBrainrotTool(player, data)
 		equipped[player] = nil
 
 		local model = carrying[player]
-		if model then model:Destroy() end
+		if model then 
+			model:Destroy() 
+		end
 
 		carrying[player] = nil
 
@@ -246,7 +262,8 @@ end
 -- Give item
 ------------------------------------------------
 
-function Pickup.giveItem(player, name, rarity, incomePerSec, level)
+function Pickup.giveItem(player, name, rarity, incomePerSec, level, mutation)
+	mutation = mutation or "None"
 	local items = inventory[player]
 	if items and #items >= Config.MaxInventory then
 		return false
@@ -263,6 +280,7 @@ function Pickup.giveItem(player, name, rarity, incomePerSec, level)
 		rarity = rarity,
 		incomePerSec = incomePerSec,
 		level = level or 1,
+		mutation = mutation,
 	})
 
 	return true
@@ -292,6 +310,7 @@ function Pickup.grab(player, model)
 	local name = model:GetAttribute("Name")
 	local rarity = model:GetAttribute("Rarity")
 	local incomePerSec = model:GetAttribute("IncomePerSec")
+	local mutation = model:GetAttribute("Mutation") or "None"
 
 	local partCount = 0
 	for _, p in model:GetDescendants() do
@@ -355,6 +374,7 @@ function Pickup.stash(player)
 		name = model:GetAttribute("Name"),
 		rarity = model:GetAttribute("Rarity"),
 		incomePerSec = model:GetAttribute("IncomePerSec"),
+		mutation = model:GetAttribute("Mutation") or "None",
 		level = 1,
 	}
 
@@ -499,6 +519,7 @@ Players.PlayerAdded:Connect(function(player)
 						rarity = tool:GetAttribute("Rarity"),
 						incomePerSec = tool:GetAttribute("IncomePerSec"),
 						level = tool:GetAttribute("Level") or 1,
+						mutation = tool:GetAttribute("Mutation") or "None",
 					})
 				end
 			end

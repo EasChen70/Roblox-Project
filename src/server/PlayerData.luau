@@ -21,36 +21,26 @@ local PlayerData = {}
 -----CONFIG/CONSTANTS-----
 local DATA_STORE_NAME = "BrainrotCannonV1"
 
-local CURRENT_VERSION = 2  -- bumped from 1 for level field
+local CURRENT_VERSION = 2 -- bumped from 1 for level field
 
 local LOCK_EXPIRY = 60
 local LOCK_REFRESH = 30
 
 local AUTOSAVE_INTERVAL = 10
-local SAVE_THROTTLE = 6           -- only used by PlayerData.save (autosave safety net)
-local REQUEST_COALESCE_WINDOW = 1.5  -- event-driven saves coalesce within this window
+local SAVE_THROTTLE = 6 -- only used by PlayerData.save (autosave safety net)
+local REQUEST_COALESCE_WINDOW = 1.5 -- event-driven saves coalesce within this window
 
 local MAX_RETRIES = 3
-local RETRY_DELAYS = {1, 2, 4}
+local RETRY_DELAYS = { 1, 2, 4 }
 
 local dataStore = DataStoreService:GetDataStore(DATA_STORE_NAME)
 
 -----RUNTIME STATE-----
 local sessionData = {}
 local sessionBase = {}
-local lastSave = {}           -- tick time of last completed save (for throttle + coalesce decisions)
+local lastSave = {} -- tick time of last completed save (for throttle + coalesce decisions)
 local lockThreads = {}
-local pendingSave = {}        -- player → true when a coalesced save is scheduled
-
-local modelFolders = {
-	Common    = ServerStorage:WaitForChild("CommonBrainRotModels"),
-	Rare      = ServerStorage:WaitForChild("RareBrainRotModels"),
-	Epic      = ServerStorage:WaitForChild("EpicBrainRotModels"),
-	Legendary = ServerStorage:WaitForChild("LegendaryBrainRotModels"),
-	Mythic    = ServerStorage:WaitForChild("MythicBrainRotModels"),
-	Secret    = ServerStorage:WaitForChild("SecretBrainRotModels"),
-	Divine    = ServerStorage:WaitForChild("DivineBrainRotModels"),
-}
+local pendingSave = {} -- player → true when a coalesced save is scheduled
 
 local migrations = {}
 
@@ -87,9 +77,13 @@ local function getKey(player)
 end
 
 local function runMigrations(data)
-	if not data.version then data.version = 1 end
+	if not data.version then
+		data.version = 1
+	end
 
-	if data.version > CURRENT_VERSION then return nil end
+	if data.version > CURRENT_VERSION then
+		return nil
+	end
 
 	for v = data.version + 1, CURRENT_VERSION do
 		if migrations[v] then
@@ -131,7 +125,9 @@ end
 
 function PlayerData.countSlots(slots)
 	local count = 0
-	for _ in slots do count += 1 end
+	for _ in slots do
+		count += 1
+	end
 	return count
 end
 
@@ -141,13 +137,19 @@ local function readSlots(player)
 	local slots = {}
 
 	local base = sessionBase[player] or Base.getPlayerBase(player)
-	if not base then return slots end
+	if not base then
+		return slots
+	end
 	local slotsFolder = base:FindFirstChild("Slots")
-	if not slotsFolder then return slots end
+	if not slotsFolder then
+		return slots
+	end
 
 	for i = 1, Config.MaxSlots do
 		local slot = slotsFolder:FindFirstChild("Slot" .. i)
-		if not slot then continue end
+		if not slot then
+			continue
+		end
 
 		for _, child in slot:GetChildren() do
 			if child:IsA("Model") and child:GetAttribute("Placed") then
@@ -155,6 +157,7 @@ local function readSlots(player)
 					name = child:GetAttribute("Name"),
 					rarity = child:GetAttribute("Rarity"),
 					level = child:GetAttribute("Level") or 1,
+					mutation = child:GetAttribute("Mutation") or "None",
 					accumulatedCash = slot:GetAttribute("AccumulatedCash") or 0,
 				}
 				break
@@ -171,8 +174,12 @@ local function readLiveState(player, data)
 		local money = leaderstats:FindFirstChild("Money")
 		local rebirths = leaderstats:FindFirstChild("Rebirths")
 
-		if money then data.money = money.Value end
-		if rebirths then data.rebirths = rebirths.Value end
+		if money then
+			data.money = money.Value
+		end
+		if rebirths then
+			data.rebirths = rebirths.Value
+		end
 		data.cannonPower = player:GetAttribute("CannonPower") or 1
 	end
 
@@ -183,7 +190,13 @@ local function readLiveState(player, data)
 	local slotCount = PlayerData.countSlots(data.slots)
 	print("[PlayerData] Reading slots for save, count:", slotCount)
 	for slotIndex, slotData in data.slots do
-		print("[PlayerData]   - Slot" .. slotIndex .. ":", slotData.name, slotData.rarity, "L" .. slotData.level, "$" .. slotData.accumulatedCash)
+		print(
+			"[PlayerData]   - Slot" .. slotIndex .. ":",
+			slotData.name,
+			slotData.rarity,
+			"L" .. slotData.level,
+			"$" .. slotData.accumulatedCash
+		)
 	end
 
 	local items = Pickup.getInventory(player)
@@ -197,6 +210,7 @@ local function readLiveState(player, data)
 				name = tool.Name,
 				rarity = tool:GetAttribute("Rarity"),
 				level = toolLevel,
+				mutation = tool:GetAttribute("Mutation") or "None",
 			})
 			print("[PlayerData]   - Inv:", tool.Name, tool:GetAttribute("Rarity"), "L" .. toolLevel)
 		end
@@ -220,10 +234,14 @@ function PlayerData.load(player)
 
 	while not base and tick() - waitStart < 10 do
 		base = Base.getPlayerBase(player)
-		if not base then task.wait(0.1) end
+		if not base then
+			task.wait(0.1)
+		end
 	end
 
-	if not player.Parent then return end
+	if not player.Parent then
+		return
+	end
 
 	local wasLocked = false
 	local loadedData = nil
@@ -246,7 +264,9 @@ function PlayerData.load(player)
 			return data
 		end)
 
-		if wasLocked then error("Session locked") end
+		if wasLocked then
+			error("Session locked")
+		end
 	end)
 
 	if not success or not loadedData then
@@ -268,10 +288,19 @@ function PlayerData.load(player)
 	leaderstats.Rebirths.Value = loadedData.rebirths or 0
 	player:SetAttribute("CannonPower", loadedData.cannonPower or 1)
 
-	print("[PlayerData] Loaded", player.Name, "— Money:", loadedData.money, "Slots:", PlayerData.countSlots(loadedData.slots or {}), "Inventory:", #(loadedData.inventory or {}))
+	print(
+		"[PlayerData] Loaded",
+		player.Name,
+		"— Money:",
+		loadedData.money,
+		"Slots:",
+		PlayerData.countSlots(loadedData.slots or {}),
+		"Inventory:",
+		#(loadedData.inventory or {})
+	)
 
 	if base and loadedData.slots then
-		PlayerData.hydrateSlots(player, base, loadedData.slots)
+		PlayerData.hydrateSlots(base, loadedData.slots)
 	end
 
 	if loadedData.inventory then
@@ -279,12 +308,19 @@ function PlayerData.load(player)
 		if not player.Character then
 			player.CharacterAdded:Wait()
 		end
-		task.wait(0.5)  -- Give client hotbar a moment to initialize
+		task.wait(0.5) -- Give client hotbar a moment to initialize
 
 		for _, itemData in loadedData.inventory do
 			local income = getIncomeFromRegistry(itemData.name)
-			Pickup.giveItem(player, itemData.name, itemData.rarity, income, itemData.level or 1)
-			task.wait(0.05)  -- Small stagger between Tool creation to let client catch up
+			Pickup.giveItem(
+				player,
+				itemData.name,
+				itemData.rarity,
+				income,
+				itemData.level or 1,
+				itemData.mutation or "None"
+			)
+			task.wait(0.05) -- Small stagger between Tool creation to let client catch up
 		end
 		if #loadedData.inventory > 0 then
 			print("[PlayerData] Restored", #loadedData.inventory, "inventory items for", player.Name)
@@ -309,20 +345,35 @@ function PlayerData.load(player)
 end
 
 -----HYDRATE (rebuild)-----
-function PlayerData.hydrateSlots(player, base, slots)
+local function getModelFolderName(rarity, mutation)
+	if mutation and mutation ~= "None" then
+		return mutation .. rarity .. "BrainRotModels"
+	end
+	return rarity .. "BrainRotModels"
+end
+
+function PlayerData.hydrateSlots(base, slots)
 	local slotsFolder = base:FindFirstChild("Slots")
-	if not slotsFolder then return end
+	if not slotsFolder then
+		return
+	end
 
 	for slotIndex, slotData in slots do
 		local slot = slotsFolder:FindFirstChild("Slot" .. slotIndex)
-		if not slot then continue end
+		if not slot then
+			continue
+		end
 
 		local point = slot:FindFirstChild("PlacementPoint")
-		if not point then continue end
+		if not point then
+			continue
+		end
 
-		local folder = modelFolders[slotData.rarity]
+		local mutation = slotData.mutation or "None"
+		local folderName = getModelFolderName(slotData.rarity, mutation)
+		local folder = ServerStorage:FindFirstChild(folderName)
 		if not folder then
-			warn("[PlayerData] No folder for rarity:", slotData.rarity)
+			warn("[PlayerData] No folder:", folderName)
 			continue
 		end
 
@@ -334,7 +385,7 @@ function PlayerData.hydrateSlots(player, base, slots)
 
 		local level = slotData.level or 1
 		local baseIncome = getIncomeFromRegistry(slotData.name)
-		local incomePerSec = Brainrots.getIncomeAtLevel(baseIncome, slotData.rarity, level)
+		local incomePerSec = Brainrots.getIncomeWithMutation(baseIncome, slotData.rarity, level, mutation)
 
 		local ok, clone = pcall(function()
 			local c = template:Clone()
@@ -344,7 +395,7 @@ function PlayerData.hydrateSlots(player, base, slots)
 			c:SetAttribute("BaseIncome", baseIncome)
 			c:SetAttribute("IncomePerSec", incomePerSec)
 			c:SetAttribute("Placed", true)
-
+			c:SetAttribute("Mutation", mutation)
 			for _, part in c:GetDescendants() do
 				if part:IsA("BasePart") then
 					part.Anchored = true
@@ -389,6 +440,7 @@ function PlayerData.hydrateSlots(player, base, slots)
 			rarity = slotData.rarity,
 			incomePerSec = incomePerSec,
 			level = level,
+			mutation = mutation,
 			maxLevel = Brainrots.MaxLevel,
 		})
 
@@ -408,7 +460,9 @@ end
 
 -- Internal: do the save. Bypasses throttle. Used by requestSave + autosave path.
 local function doSave(player, reason)
-	if not sessionData[player] then return end
+	if not sessionData[player] then
+		return
+	end
 
 	local data = sessionData[player]
 	readLiveState(player, data)
@@ -436,7 +490,9 @@ end
 -- Event-driven save. Coalesces rapid calls within REQUEST_COALESCE_WINDOW.
 -- Use this from destructive event hooks (place, pickup, stash, upgrade, sell, collect).
 function PlayerData.requestSave(player)
-	if not sessionData[player] then return end
+	if not sessionData[player] then
+		return
+	end
 
 	if pendingSave[player] then
 		-- Already scheduled — the pending handler will capture final state when it fires
@@ -450,7 +506,9 @@ function PlayerData.requestSave(player)
 		pendingSave[player] = nil
 
 		-- Player may have left during the coalesce window
-		if not sessionData[player] then return end
+		if not sessionData[player] then
+			return
+		end
 
 		local ok, err = pcall(doSave, player, "requested")
 		if not ok then
@@ -462,11 +520,17 @@ end
 -- Throttled save. Used by autosave loop as a safety-net.
 -- Manual callers should prefer requestSave for destructive events.
 function PlayerData.save(player)
-	if not sessionData[player] then return end
+	if not sessionData[player] then
+		return
+	end
 
 	local now = tick()
 	if lastSave[player] and (now - lastSave[player]) < SAVE_THROTTLE then
-		print("[PlayerData] save throttled for", player.Name, "(" .. string.format("%.1f", now - lastSave[player]) .. "s since last)")
+		print(
+			"[PlayerData] save throttled for",
+			player.Name,
+			"(" .. string.format("%.1f", now - lastSave[player]) .. "s since last)"
+		)
 		return
 	end
 
@@ -480,7 +544,9 @@ function PlayerData.clearSession(player)
 	-- Atomic claim: if sessionData[player] is nil, another caller already handled this.
 	-- This check-and-clear MUST happen before any yield (task.wait, UpdateAsync, SetAsync).
 	local data = sessionData[player]
-	if not data then return end
+	if not data then
+		return
+	end
 	sessionData[player] = nil
 
 	-- Cancel lock refresh thread (doesn't yield)
@@ -517,12 +583,12 @@ end
 -----LIFECYCLE-----
 
 function PlayerData.setup()
-    -- PlayerRemoving is wired in Main.server.luau to control ordering with Base.releaseBase
-    game:BindToClose(function()
-        for _, player in Players:GetPlayers() do
-            pcall(PlayerData.clearSession, player)
-        end
-    end)
+	-- PlayerRemoving is wired in Main.server.luau to control ordering with Base.releaseBase
+	game:BindToClose(function()
+		for _, player in Players:GetPlayers() do
+			pcall(PlayerData.clearSession, player)
+		end
+	end)
 end
 
 function PlayerData.start()

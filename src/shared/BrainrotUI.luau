@@ -4,7 +4,7 @@ local Util = require(game.ReplicatedStorage.Util)
 local Brainrots = require(game.ReplicatedStorage.Brainrots)
 local Players = game:GetService("Players")
 
-local MAX_VISIBILITY_DISTANCE = 40
+local MAX_VISIBILITY_DISTANCE = 80
 
 local RarityColors = {
 	Common = Color3.fromRGB(85, 255, 85),
@@ -89,13 +89,19 @@ function BrainrotUI.createBillboard(model, data)
 	if level then
 		billboard.Size = UDim2.new(8, 0, 6, 0)
 	end
-
+	local mutation = data.mutation or "None"
+	if mutation ~= "None" then
+		local mutColor = mutation == "Diamond" and Color3.fromRGB(100, 220, 255) or Color3.fromRGB(255, 200, 50)
+		local mutLabel = makeLabel("Mutation", "✦ " .. mutation:upper(), mutColor, -1, 24)
+		mutLabel.Parent = frame
+	end
 	if level then
 		local levelLabel = makeLabel("Level", formatLevelText(level, maxLevel), LEVEL_COLOR, 0, 24)
 		levelLabel.Parent = frame
 	end
 
-	local incomeLabel = makeLabel("Income", Util.formatMoney(data.incomePerSec) .. "/s", Color3.fromRGB(85, 255, 85), 1, 22)
+	local incomeLabel =
+		makeLabel("Income", Util.formatMoney(data.incomePerSec) .. "/s", Color3.fromRGB(85, 255, 85), 1, 22)
 	incomeLabel.Parent = frame
 
 	local nameLabel = makeLabel("Name", data.name, Color3.fromRGB(255, 255, 255), 2, 20)
@@ -116,10 +122,14 @@ end
 
 function BrainrotUI.updateBillboardLevel(model, newLevel, newIncome, maxLevel)
 	local billboard = model.PrimaryPart and model.PrimaryPart:FindFirstChild("BrainrotBillboard")
-	if not billboard then return end
+	if not billboard then
+		return
+	end
 
 	local frame = billboard:FindFirstChild("Container")
-	if not frame then return end
+	if not frame then
+		return
+	end
 
 	local incomeLabel = frame:FindFirstChild("Income")
 	if incomeLabel then
@@ -138,7 +148,12 @@ function BrainrotUI.createWorldBillboard(model, data)
 
 	local billboard, frame = createBillboardGui(model, Vector3.new(0, 12, 0), true)
 	billboard.Size = UDim2.new(8, 0, 6, 0)
-
+	local mutation = data.mutation or "None"
+	if mutation ~= "None" then
+		local mutColor = mutation == "Diamond" and Color3.fromRGB(100, 220, 255) or Color3.fromRGB(255, 200, 50)
+		local mutLabel = makeLabel("Mutation", "✦ " .. mutation:upper(), mutColor, -1, 24)
+		mutLabel.Parent = frame
+	end
 	local timerLabel = makeLabel("Timer", "", Color3.fromRGB(255, 255, 255), 0, 24)
 
 	local despawnTime = model:GetAttribute("DespawnRemaining")
@@ -147,7 +162,8 @@ function BrainrotUI.createWorldBillboard(model, data)
 		timerLabel.Parent = frame
 	end
 
-	local incomeLabel = makeLabel("Income", Util.formatMoney(data.incomePerSec) .. "/s", Color3.fromRGB(85, 255, 85), 1, 22)
+	local incomeLabel =
+		makeLabel("Income", Util.formatMoney(data.incomePerSec) .. "/s", Color3.fromRGB(85, 255, 85), 1, 22)
 	incomeLabel.Parent = frame
 
 	local nameLabel = makeLabel("Name", data.name, Color3.fromRGB(255, 255, 255), 2, 20)
@@ -168,7 +184,9 @@ function BrainrotUI.createWorldBillboard(model, data)
 		task.spawn(function()
 			while model.Parent and billboard.Parent do
 				local remaining = model:GetAttribute("DespawnRemaining")
-				if not remaining then break end
+				if not remaining then
+					break
+				end
 				timerLabel.Text = "🕐 " .. math.ceil(remaining) .. "s"
 				if remaining <= 10 then
 					timerLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
@@ -184,7 +202,9 @@ end
 local function getUpgradeSignCFrame(slot)
 	local collectButton = slot:FindFirstChild("CollectButton")
 	local point = slot:FindFirstChild("PlacementPoint")
-	if not point then return nil end
+	if not point then
+		return nil
+	end
 
 	local forward = point.CFrame.LookVector
 	local pos
@@ -210,10 +230,14 @@ function BrainrotUI.createUpgradeBillboard(slot, data)
 	local baseIncome = data.baseIncome
 
 	local anchor = getUpgradeSignCFrame(slot)
-	if not anchor then return nil end
+	if not anchor then
+		return nil
+	end
 
 	local existing = slot:FindFirstChild("UpgradeBillboard")
-	if existing then existing:Destroy() end
+	if existing then
+		existing:Destroy()
+	end
 
 	local sign = Instance.new("Part")
 	sign.Name = "UpgradeAnchor"
@@ -321,15 +345,23 @@ function BrainrotUI.createUpgradeBillboard(slot, data)
 end
 
 function BrainrotUI.updateUpgradeBillboard(billboardModel, newCost, newLevel)
-	if not billboardModel then return end
+	if not billboardModel then
+		return
+	end
 	local sign = billboardModel.PrimaryPart
-	if not sign then return end
+	if not sign then
+		return
+	end
 
 	local gui = sign:FindFirstChild("UpgradeGui")
-	if not gui then return end
+	if not gui then
+		return
+	end
 
 	local container = gui:FindFirstChild("Container")
-	if not container then return end
+	if not container then
+		return
+	end
 
 	local topRow = container:FindFirstChild("TopRow")
 	if topRow then
@@ -346,20 +378,30 @@ function BrainrotUI.updateUpgradeBillboard(billboardModel, newCost, newLevel)
 end
 
 function BrainrotUI.setUpgradeBillboardMax(billboardModel)
-	if not billboardModel then return end
+	if not billboardModel then
+		return
+	end
 	local sign = billboardModel.PrimaryPart
-	if not sign then return end
+	if not sign then
+		return
+	end
 
 	local gui = sign:FindFirstChild("UpgradeGui")
-	if not gui then return end
+	if not gui then
+		return
+	end
 
 	local container = gui:FindFirstChild("Container")
-	if not container then return end
+	if not container then
+		return
+	end
 
 	local topRow = container:FindFirstChild("TopRow")
 	if topRow then
 		local arrow = topRow:FindFirstChild("Arrow")
-		if arrow then arrow.Visible = false end
+		if arrow then
+			arrow.Visible = false
+		end
 
 		local costLabel = topRow:FindFirstChild("Cost")
 		if costLabel then
