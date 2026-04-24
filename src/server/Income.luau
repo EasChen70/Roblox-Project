@@ -33,7 +33,7 @@ local function createBillboard(collectButton)
 
 	local label = Instance.new("TextLabel")
 	label.Name = "Amount"
-	label.Size = UDim2.new(1, 0, 1, 0)
+	label.Size = UDim2.fromScale(1, 1)
 	label.BackgroundTransparency = 1
 	label.TextColor3 = Color3.fromRGB(255, 255, 255)
 	label.TextStrokeTransparency = 1

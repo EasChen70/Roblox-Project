@@ -1,7 +1,6 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Config = require(ReplicatedStorage.Config)
 local Remotes = require(ReplicatedStorage.Remotes)
 local Util = require(ReplicatedStorage.Util)
 
@@ -16,10 +15,14 @@ end
 
 local function createBaseSign(base, player)
 	local sign = base:FindFirstChild("Sign")
-	if not sign then return end
+	if not sign then
+		return
+	end
 
 	local existing = sign:FindFirstChild("BaseSign")
-	if existing then existing:Destroy() end
+	if existing then
+		existing:Destroy()
+	end
 
 	local surface = Instance.new("SurfaceGui")
 	surface.Name = "BaseSign"
@@ -31,8 +34,8 @@ local function createBaseSign(base, player)
 
 	local bg = Instance.new("Frame")
 	bg.Name = "Background"
-	bg.Size = UDim2.new(0.9, 0, 0.85, 0)
-	bg.Position = UDim2.new(0.05, 0, 0.075, 0)
+	bg.Size = UDim2.fromScale(0.9, 0.85)
+	bg.Position = UDim2.fromScale(0.05, 0.075)
 	bg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 	bg.BackgroundTransparency = 0.1
 	bg.Parent = surface
@@ -56,16 +59,16 @@ local function createBaseSign(base, player)
 
 	local thumbFrame = Instance.new("Frame")
 	thumbFrame.Name = "ThumbFrame"
-	thumbFrame.Size = UDim2.new(0.3, 0, 0.7, 0)
+	thumbFrame.Size = UDim2.fromScale(0.3, 0.7)
 	thumbFrame.BackgroundTransparency = 1
 	thumbFrame.LayoutOrder = 1
 	thumbFrame.Parent = bg
 
 	local thumb = Instance.new("ImageLabel")
 	thumb.Name = "Thumbnail"
-	thumb.Size = UDim2.new(1, 0, 1, 0)
+	thumb.Size = UDim2.fromScale(1, 1)
 	thumb.SizeConstraint = Enum.SizeConstraint.RelativeYY
-	thumb.Position = UDim2.new(0.5, 0, 0.5, 0)
+	thumb.Position = UDim2.fromScale(0.5, 0.5)
 	thumb.AnchorPoint = Vector2.new(0.5, 0.5)
 	thumb.BackgroundColor3 = Color3.fromRGB(220, 220, 220)
 	thumb.Image = "rbxthumb://type=AvatarHeadShot&id=" .. player.UserId .. "&w=150&h=150"
@@ -82,7 +85,7 @@ local function createBaseSign(base, player)
 
 	local info = Instance.new("Frame")
 	info.Name = "Info"
-	info.Size = UDim2.new(0.55, 0, 0.8, 0)
+	info.Size = UDim2.fromScale(0.55, 0.8)
 	info.BackgroundTransparency = 1
 	info.LayoutOrder = 2
 	info.Parent = bg
@@ -99,7 +102,7 @@ local function createBaseSign(base, player)
 	nameLabel.Text = player.Name
 	nameLabel.TextColor3 = Color3.fromRGB(30, 30, 30)
 	nameLabel.BackgroundTransparency = 1
-	nameLabel.Size = UDim2.new(1, 0, 0.4, 0)
+	nameLabel.Size = UDim2.fromScale(1, 0.4)
 	nameLabel.Font = Enum.Font.LuckiestGuy
 	nameLabel.TextScaled = true
 	nameLabel.LayoutOrder = 1
@@ -115,7 +118,7 @@ local function createBaseSign(base, player)
 	incomeLabel.Text = "$0/s"
 	incomeLabel.TextColor3 = Color3.fromRGB(40, 180, 40)
 	incomeLabel.BackgroundTransparency = 1
-	incomeLabel.Size = UDim2.new(1, 0, 0.3, 0)
+	incomeLabel.Size = UDim2.fromScale(1, 0.3)
 	incomeLabel.Font = Enum.Font.LuckiestGuy
 	incomeLabel.TextScaled = true
 	incomeLabel.LayoutOrder = 2
@@ -129,15 +132,21 @@ end
 
 local function clearBaseSign(base)
 	local sign = base:FindFirstChild("Sign")
-	if not sign then return end
+	if not sign then
+		return
+	end
 	local existing = sign:FindFirstChild("BaseSign")
-	if existing then existing:Destroy() end
+	if existing then
+		existing:Destroy()
+	end
 end
 
 -- Clear placed brainrots, upgrade signs, and reset slot state when a base is released
 local function clearBaseSlots(base)
 	local slotsFolder = base:FindFirstChild("Slots")
-	if not slotsFolder then return end
+	if not slotsFolder then
+		return
+	end
 
 	for _, slot in slotsFolder:GetChildren() do
 		-- Destroy placed brainrot models (anything with the Placed attribute)
@@ -172,13 +181,21 @@ end
 
 function Base.updateSignIncome(base, incomeText)
 	local sign = base:FindFirstChild("Sign")
-	if not sign then return end
+	if not sign then
+		return
+	end
 	local gui = sign:FindFirstChild("BaseSign")
-	if not gui then return end
+	if not gui then
+		return
+	end
 	local bg = gui:FindFirstChild("Background")
-	if not bg then return end
+	if not bg then
+		return
+	end
 	local info = bg:FindFirstChild("Info")
-	if not info then return end
+	if not info then
+		return
+	end
 	local label = info:FindFirstChild("IncomeDisplay")
 	if label then
 		label.Text = incomeText
@@ -186,7 +203,9 @@ function Base.updateSignIncome(base, incomeText)
 end
 
 function Base.claimBase(player)
-	if claimedBases[player] then return claimedBases[player] end
+	if claimedBases[player] then
+		return claimedBases[player]
+	end
 
 	for _, base in bases:GetChildren() do
 		local taken = false
@@ -215,7 +234,7 @@ function Base.releaseBase(player)
 		local base = claimedBases[player]
 		print(player.Name, "released", base.Name)
 		clearBaseSign(base)
-		clearBaseSlots(base)  -- destroy placed brainrots, upgrade signs, reset slot visuals
+		clearBaseSlots(base) -- destroy placed brainrots, upgrade signs, reset slot visuals
 		claimedBases[player] = nil
 	end
 end

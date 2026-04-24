@@ -21,7 +21,9 @@ local function setupReturnCannon(model)
 		local success, result = pcall(function()
 			return require(ServerScriptService.Base).getPlayerBase(player)
 		end)
-		if success then playerBase = result end
+		if success then 
+			playerBase = result 
+		end
 
 		if not (hrp and hum and playerBase) then
 			prompt.Enabled = true
@@ -38,9 +40,13 @@ local function setupReturnCannon(model)
 		hrp.CFrame = seat.CFrame * CFrame.Angles(math.rad(-45), 0, 0) * CFrame.new(0, 1, 0)
 		task.wait(1)
 
-		if blastSound then blastSound:Play() end
+		if blastSound then 
+			blastSound:Play() 
+		end
 		hrp.Anchored = false
-		pcall(function() hrp:SetNetworkOwner(player) end)
+		pcall(function() 
+			hrp:SetNetworkOwner(player) 
+		end)
 		hum.PlatformStand = true
 
 		local targetPos = playerBase:GetPivot().Position
