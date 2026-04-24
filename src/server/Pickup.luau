@@ -615,4 +615,13 @@ Remotes.DropBrainrot.OnServerEvent:Connect(function(player)
 	Pickup.drop(player)
 end)
 
+function Pickup.cleanup(player)
+    carrying[player] = nil
+    inventory[player] = nil
+    equipped[player] = nil
+    carryTracks[player] = nil
+    inventorySnapshot[player] = nil
+    stashDebounce[player] = nil
+end
+
 return Pickup

@@ -25,6 +25,7 @@ Players.PlayerRemoving:Connect(function(player)
 	PlayerData.clearSession(player)
 	-- 2. Then release base + destroy placed brainrots + reset slot visuals
 	Base.releaseBase(player)
+	Pickup.cleanup(player)
 end)
 
 -- Wire world grab: Spawner fires callback → Pickup.grab handles it

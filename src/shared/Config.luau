@@ -24,6 +24,7 @@ local Config = {
 
 	--CannonShop
 	CannonCostScale = 1.1,  -- cost multiplier per power level owned
+	MaxCannonPower = 130, -- set to whatever cannon launch physics top-end is
 	CannonUpgradeCosts = {
 		{amount = 1,  cost = 500},
 		{amount = 5,  cost = 2500},
