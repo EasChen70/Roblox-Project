@@ -16,10 +16,10 @@ function Placement.onDataChanged(cb)
 	onDataChangedCallback = cb
 end
 local function getModelFolderName(rarity, mutation)
-    if mutation and mutation ~= "None" then
-        return mutation .. rarity .. "BrainRotModels"
-    end
-    return rarity .. "BrainRotModels"
+	if mutation and mutation ~= "None" then
+		return mutation .. rarity .. "BrainRotModels"
+	end
+	return rarity .. "BrainRotModels"
 end
 local modelFolders = {
 	Common = ServerStorage:WaitForChild("CommonBrainRotModels"),
@@ -100,8 +100,8 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 			end
 
 			local pickupLevel = clone:GetAttribute("Level") or 1
-			local mutation = clone:GetAttribute("Mutation") or "None"
-			local success = Pickup.giveItem(triggerPlayer, name, rarity, baseIncome, pickupLevel, mutation)
+			local pickupMutation = clone:GetAttribute("Mutation") or "None"
+			local success = Pickup.giveItem(triggerPlayer, name, rarity, baseIncome, pickupLevel, pickupMutation)
 			if not success then
 				return
 			end

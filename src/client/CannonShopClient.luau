@@ -14,11 +14,10 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 local CANNON_BILLBOARD_DIST = 35
 
-local RING_RADIUS  = 9.5
-local RING_COLOR   = Color3.fromRGB(80, 200, 255)
-local RING_Y_DROP  = 6.35
-local OPEN_DIST    = RING_RADIUS
-local CLOSE_DIST   = RING_RADIUS + 1
+local RING_RADIUS = 9.5
+local RING_Y_DROP = 6.35
+local OPEN_DIST   = RING_RADIUS
+local CLOSE_DIST  = RING_RADIUS + 1
 
 local isOpen          = false
 local manuallyClosed  = false
@@ -29,7 +28,7 @@ local CHECK_INTERVAL  = 0.5
 local shopGui    = nil
 local badgeLabel = nil
 local rowRefs    = {}
-local billboards = {}
+
 
 -- ── Model finders ─────────────────────────────────────────────────────────────
 
@@ -64,9 +63,13 @@ local function getClosestDist()
 	if not hrp then return math.huge end
 	local closest = math.huge
 	for _, shop in getCannonShops() do
-		local ok, pos = pcall(function() return shop:GetPivot().Position end)
+		local ok, ringPos = pcall(function()
+			return (shop:GetPivot() * CFrame.new(0, -RING_Y_DROP, -8)).Position
+		end)
 		if ok then
-			local d = (hrp.Position - pos).Magnitude
+			-- Flat XZ distance only, same as the visual ring
+			local flat = Vector3.new(ringPos.X, hrp.Position.Y, ringPos.Z)
+			local d = (hrp.Position - flat).Magnitude
 			if d < closest then closest = d end
 		end
 	end
@@ -78,8 +81,8 @@ end
 local function spawnRings()
 	task.wait(2)
 	for _, shop in getCannonShops() do
-		local pivot = shop:GetPivot().Position
-		local ringY = pivot.Y - RING_Y_DROP
+		local shopCFrame = shop:GetPivot()
+		local ringPos = (shopCFrame * CFrame.new(0, -RING_Y_DROP, -8)).Position  -- FIX: restore forward offset
 
 		local ring = Instance.new("Part")
 		ring.Anchored     = true
@@ -88,9 +91,9 @@ local function spawnRings()
 		ring.CastShadow   = false
 		ring.Shape        = Enum.PartType.Cylinder
 		ring.Size         = Vector3.new(0.05, RING_RADIUS * 2, RING_RADIUS * 2)
-		ring.CFrame       = CFrame.new(pivot.X, ringY, pivot.Z) * CFrame.Angles(0, 0, math.rad(90))
+		ring.CFrame       = CFrame.new(ringPos) * CFrame.Angles(0, 0, math.rad(90))
 		ring.Material     = Enum.Material.Neon
-		ring.Color        = RING_COLOR
+		ring.Color        = Color3.fromRGB(145, 19, 195)  -- FIX: restore purple
 		ring.Transparency = 0.78
 		ring.Parent       = workspace
 	end
@@ -104,26 +107,27 @@ end
 
 local function updateCannonBillboards()
 	local power = getCannonPower()
-	-- Added the emoji but kept the logic the same
 	local text = "💥 " .. (power > 0 and tostring(power) or "0")
 
 	for _, cannon in getCannonModels() do
-		if not cannon:FindFirstChild("PowerBillboard") then
+		if not cannon:FindFirstChild("PowerBillboard", true) then
 			local billboard = Instance.new("BillboardGui")
 			billboard.Name           = "PowerBillboard"
-			billboard.Size           = UDim2.new(0, 150, 0, 70) -- Slightly wider for the emoji
+			billboard.Size           = UDim2.new(0, 150, 0, 70)
 			local _, size = cannon:GetBoundingBox()
 			billboard.StudsOffset    = Vector3.new(0, (size.Y / 2) + 8, 0)
 			billboard.AlwaysOnTop    = true
 			billboard.LightInfluence = 0
-			billboard.Parent         = cannon
+			local root = cannon.PrimaryPart or cannon:FindFirstChildWhichIsA("BasePart")
+			if not root then continue end
+			billboard.Parent = root
 
 			local label = Instance.new("TextLabel")
 			label.Name                   = "PowerLabel"
 			label.Size                   = UDim2.new(1, 0, 1, 0)
 			label.BackgroundTransparency = 1
-			label.TextColor3             = Color3.fromRGB(255, 215, 0) -- Back to Gold!
-			label.Font                   = Enum.Font.LuckiestGuy       -- Bold simulator font
+			label.TextColor3             = Color3.fromRGB(255, 215, 0)
+			label.Font                   = Enum.Font.LuckiestGuy
 			label.TextScaled             = true
 			label.Parent                 = billboard
 
@@ -132,10 +136,9 @@ local function updateCannonBillboards()
 			stroke.Thickness = 3
 			stroke.Parent    = label
 
-			table.insert(billboards, billboard)
 		end
 
-		local bill = cannon:FindFirstChild("PowerBillboard")
+		local bill = cannon:FindFirstChild("PowerBillboard", true)
 		if bill then
 			local lbl = bill:FindFirstChild("PowerLabel")
 			if lbl then lbl.Text = text end
@@ -150,7 +153,7 @@ local function updateBillboardVisibility()
 	if not hrp then return end
 
 	for _, cannon in getCannonModels() do
-		local bill = cannon:FindFirstChild("PowerBillboard")
+		local bill = cannon:FindFirstChild("PowerBillboard", true)
 		if bill then
 			local ok, pos = pcall(function() return cannon:GetPivot().Position end)
 			if ok then
@@ -175,12 +178,9 @@ end
 
 local function refreshUI()
 	local power = getCannonPower()
-
-	-- FIXED: Keeps the "CURRENT POWER:" prefix instead of just showing a number
-	if badgeLabel then 
-		badgeLabel.Text = "💥POWER:  " .. tostring(power) 
+	if badgeLabel then
+		badgeLabel.Text = "💥POWER:  " .. tostring(power)
 	end
-
 	for _, row in rowRefs do
 		if row.label then
 			row.label.Text = "+" .. row.entry.amount .. " Power\n" .. power .. " → " .. (power + row.entry.amount)
@@ -199,6 +199,7 @@ local function closeShop()
 		rowRefs    = {}
 	end
 	isOpen = false
+	manuallyClosed = true  -- FIX: was missing, caused shop to instantly reopen after manual close
 end
 
 local function onPowerChanged()
@@ -215,76 +216,101 @@ local function onPowerChanged()
 	updateCannonBillboards()
 end
 
-local function buildRow(parent, yPos, entry)
-	-- Create the Main Row Frame
+local function buildRow(parent, entry)  -- FIX: removed dead yPos parameter
 	local frame = Instance.new("Frame")
-	frame.Name = "UpgradeRow"
-	frame.Size = UDim2.new(0.95, 0, 0, 90)
-	frame.Position = UDim2.new(0.5, 0, 0, yPos)
-	frame.AnchorPoint = Vector2.new(0.5, 0)
-	frame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	frame.BackgroundTransparency = 0.6 -- Semi-transparent white
-	frame.BorderSizePixel = 0
-	frame.Parent = parent
-
-	-- Rounded Corners
+	frame.Name                  = "UpgradeRow"
+	frame.Size                  = UDim2.new(0.95, 0, 0, 90)
+	frame.BackgroundColor3      = Color3.fromRGB(255, 255, 255)
+	frame.BackgroundTransparency = 0.6
+	frame.BorderSizePixel       = 0
+	frame.Parent                = parent
 	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
 
-	-- WHITE OUTLINE FOR THE ROW
 	local rowStroke = Instance.new("UIStroke")
-	rowStroke.Color = Color3.fromRGB(255, 255, 255)
-	rowStroke.Thickness = 2.5
-	rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	rowStroke.Parent = frame
+	rowStroke.Color            = Color3.fromRGB(255, 255, 255)
+	rowStroke.Thickness        = 2.5
+	rowStroke.ApplyStrokeMode  = Enum.ApplyStrokeMode.Border
+	rowStroke.Parent           = frame
 
 	local power = getCannonPower()
 
-	-- POWER INFO TEXT
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(0.6, 0, 0.8, 0)
-	label.Position = UDim2.new(0, 15, 0.5, 0)
-	label.AnchorPoint = Vector2.new(0, 0.5)
+	label.Size               = UDim2.new(0.6, 0, 0.8, 0)
+	label.Position           = UDim2.new(0, 15, 0.5, 0)
+	label.AnchorPoint        = Vector2.new(0, 0.5)
 	label.BackgroundTransparency = 1
-	label.Text = "+" .. entry.amount .. " Power\n" .. power .. " → " .. (power + entry.amount)
-	label.TextColor3 = Color3.fromRGB(255, 255, 255)
-	label.Font = Enum.Font.DenkOne
-	label.TextScaled = true
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Parent = frame
+	label.Text               = "+" .. entry.amount .. " Power\n" .. power .. " → " .. (power + entry.amount)
+	label.TextColor3         = Color3.fromRGB(255, 255, 255)
+	label.Font               = Enum.Font.DenkOne
+	label.TextScaled         = true
+	label.TextXAlignment     = Enum.TextXAlignment.Left
+	label.Parent             = frame
 
-	-- Black outline for text
 	local lStroke = Instance.new("UIStroke", label)
-	lStroke.Thickness = 3 
-	lStroke.Color = Color3.fromRGB(0, 0, 0)
+	lStroke.Thickness = 3
+	lStroke.Color     = Color3.fromRGB(0, 0, 0)
 
-	-- PURCHASE BUTTON
 	local btn = Instance.new("TextButton")
-	btn.Size = UDim2.new(0.3, 0, 0.6, 0)
-	btn.Position = UDim2.new(0.95, 0, 0.5, 0)
-	btn.AnchorPoint = Vector2.new(1, 0.5)
+	btn.Size             = UDim2.new(0.3, 0, 0.6, 0)
+	btn.Position         = UDim2.new(0.95, 0, 0.5, 0)
+	btn.AnchorPoint      = Vector2.new(1, 0.5)
 	btn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
-	btn.Text = costText(entry.cost, power, entry.amount)
-	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	btn.Font = Enum.Font.DenkOne
-	btn.TextScaled = true
-	btn.Parent = frame
-
+	btn.Text             = costText(entry.cost, power, entry.amount)
+	btn.TextColor3       = Color3.fromRGB(255, 255, 255)
+	btn.Font             = Enum.Font.DenkOne
+	btn.TextScaled       = true
+	btn.Active           = true
+	btn.Parent           = frame
 	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
 
-	-- Black outline for button text
 	local bStroke = Instance.new("UIStroke", btn)
 	bStroke.Thickness = 3
-	bStroke.Color = Color3.fromRGB(0, 0, 0)
+	bStroke.Color     = Color3.fromRGB(0, 0, 0)
 
-	table.insert(rowRefs, {label = label, btn = btn, entry = entry})
+	table.insert(rowRefs, { label = label, btn = btn, entry = entry })
 
 	btn.MouseButton1Click:Connect(function()
-		if not btn.Active then return end
-		purchasePending = true
-		btn.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
-		btn.Text = "..."
-		btn.Active = false
-		Remotes.UpgradeCannon:FireServer(entry.amount)
+		if not btn.Active or purchasePending then return end
+
+		local cost = computeCost(entry.cost, getCannonPower(), entry.amount)
+		local playerMoney = player.leaderstats.Money.Value
+
+		if playerMoney >= cost then
+			purchasePending = true
+			btn.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
+			btn.Text             = "..."
+			btn.Active           = false
+
+			Remotes.UpgradeCannon:FireServer(entry.amount)
+
+			-- FIX: safety net if server never responds (disconnect, error, already max)
+			task.delay(5, function()
+				if purchasePending then
+					purchasePending = false
+					if btn and btn.Parent then
+						btn.Active           = true
+						btn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
+						btn.Text             = costText(entry.cost, getCannonPower(), entry.amount)
+					end
+				end
+			end)
+		else
+			local oldText  = btn.Text
+			local oldColor = btn.BackgroundColor3
+			btn.Active           = false
+			btn.Text             = "X"
+			btn.TextColor3       = Color3.fromRGB(255, 255, 255)
+			btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+			bStroke.Color        = Color3.fromRGB(0, 0, 0)
+
+			task.delay(1, function()
+				if btn and btn.Parent then
+					btn.Text             = oldText
+					btn.BackgroundColor3 = oldColor
+					btn.Active           = true
+				end
+			end)
+		end
 	end)
 end
 
@@ -294,117 +320,98 @@ local function openShop()
 	rowRefs = {}
 
 	local screen = Instance.new("ScreenGui")
-	screen.Name = "CannonShopGui"
-	screen.ResetOnSpawn = false
-	screen.Parent = playerGui
+	screen.Name          = "CannonShopGui"
+	screen.ResetOnSpawn  = false
+	screen.Parent        = playerGui
 	shopGui = screen
 
 	local main = Instance.new("Frame")
-	main.Size = UDim2.new(0.65, 0, 0.7, 0) 
-	main.Position = UDim2.new(0.5, 0, 0.5, 0)
-	main.AnchorPoint = Vector2.new(0.5, 0.5)
-	main.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-	main.BackgroundTransparency = 0.1 
-	main.Parent = screen
+	main.Size                  = UDim2.new(0.65, 0, 0.7, 0)
+	main.Position              = UDim2.new(0.5, 0, 0.5, 0)
+	main.AnchorPoint           = Vector2.new(0.5, 0.5)
+	main.BackgroundColor3      = Color3.fromRGB(15, 15, 15)
+	main.BackgroundTransparency = 0.1
+	main.Parent                = screen
 	Instance.new("UICorner", main).CornerRadius = UDim.new(0, 15)
-
-	local aspect = Instance.new("UIAspectRatioConstraint", main)
-	aspect.AspectRatio = 1.2
+	Instance.new("UIAspectRatioConstraint", main).AspectRatio = 1.2
 
 	local mStroke = Instance.new("UIStroke", main)
-	mStroke.Thickness = 4
-	mStroke.Color = Color3.fromRGB(0, 0, 0)
+	mStroke.Thickness       = 4
+	mStroke.Color           = Color3.fromRGB(0, 0, 0)
 	mStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-	-- TITLE
 	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, 0, 0.12, 0)
-	title.Position = UDim2.new(0.5, 0, 0.02, 0)
-	title.AnchorPoint = Vector2.new(0.5, 0)
+	title.Size               = UDim2.new(1, 0, 0.12, 0)
+	title.Position           = UDim2.new(0.5, 0, 0.02, 0)
+	title.AnchorPoint        = Vector2.new(0.5, 0)
 	title.BackgroundTransparency = 1
-	title.Text = "💥 UPGRADE"
-	title.TextColor3 = Color3.fromRGB(255, 255, 255)
-	title.Font = Enum.Font.DenkOne
-	title.TextScaled = true
-	title.Parent = main
+	title.Text               = "💥 UPGRADE"
+	title.TextColor3         = Color3.fromRGB(255, 255, 255)
+	title.Font               = Enum.Font.DenkOne
+	title.TextScaled         = true
+	title.Parent             = main
 	Instance.new("UIStroke", title).Thickness = 4
 
-	-- CURRENT POWER DISPLAY (Added this)
 	local powerHeader = Instance.new("TextLabel")
-	powerHeader.Name = "PowerHeader"
-	powerHeader.Size = UDim2.new(0.4, 0, 0.055, 0)
-	powerHeader.Position = UDim2.new(0.06, 0, 0.21, 0) -- Above the list
+	powerHeader.Name             = "PowerHeader"
+	powerHeader.Size             = UDim2.new(0.4, 0, 0.055, 0)
+	powerHeader.Position         = UDim2.new(0.06, 0, 0.21, 0)
 	powerHeader.BackgroundTransparency = 1
-	powerHeader.Text = "💥POWER: " .. getCannonPower()
-	powerHeader.TextColor3 = Color3.fromRGB(80, 200, 80) -- Nice green
-	powerHeader.Font = Enum.Font.DenkOne
-	powerHeader.TextScaled = true
-	powerHeader.TextXAlignment = Enum.TextXAlignment.Left
-	powerHeader.Parent = main
+	powerHeader.Text             = "💥POWER: " .. getCannonPower()
+	powerHeader.TextColor3       = Color3.fromRGB(80, 200, 80)
+	powerHeader.Font             = Enum.Font.DenkOne
+	powerHeader.TextScaled       = true
+	powerHeader.TextXAlignment   = Enum.TextXAlignment.Left
+	powerHeader.Parent           = main
 
-	-- Black outline for power text
 	local pStroke = Instance.new("UIStroke", powerHeader)
 	pStroke.Thickness = 2.5
-	pStroke.Color = Color3.fromRGB(0, 0, 0)
+	pStroke.Color     = Color3.fromRGB(0, 0, 0)
+	badgeLabel = powerHeader
 
-	-- LINK to refresh logic
-	badgeLabel = powerHeader 
-
-	-- CLOSE BUTTON
 	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.new(0.07, 0, 0.07, 0)
-	closeBtn.Position = UDim2.new(0.97, 0, 0.03, 0)
-	closeBtn.AnchorPoint = Vector2.new(1, 0)
+	closeBtn.Size             = UDim2.new(0.07, 0, 0.07, 0)
+	closeBtn.Position         = UDim2.new(0.97, 0, 0.03, 0)
+	closeBtn.AnchorPoint      = Vector2.new(1, 0)
 	closeBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-	closeBtn.Text = "X"
-	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	closeBtn.Font = Enum.Font.DenkOne
-	closeBtn.TextScaled = true
-	closeBtn.Parent = main
+	closeBtn.Text             = "X"
+	closeBtn.TextColor3       = Color3.fromRGB(255, 255, 255)
+	closeBtn.Font             = Enum.Font.DenkOne
+	closeBtn.TextScaled       = true
+	closeBtn.Parent           = main
 	Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
-	
-	local closeStroke = Instance.new("UIStroke", closeBtn)
-	closeStroke.Thickness = 2.5
-	closeStroke.Color = Color3.fromRGB(0, 0, 0)
 
-	-- RED OUTLINE FOR X BUTTON
-	local xStroke = Instance.new("UIStroke")
-	xStroke.Color = Color3.fromRGB(0, 0, 0) 
-	xStroke.Thickness = 3
+	local xStroke = Instance.new("UIStroke", closeBtn)
+	xStroke.Color           = Color3.fromRGB(0, 0, 0)
+	xStroke.Thickness       = 3
 	xStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	xStroke.Parent = closeBtn
 
-	closeBtn.MouseButton1Click:Connect(function()
-		closeShop()
-	end)
+	closeBtn.MouseButton1Click:Connect(closeShop)
 
-	-- SCROLLING AREA (Moved up slightly)
 	local scroll = Instance.new("ScrollingFrame")
-	-- Adjusted height to 66% and Y-position to 0.62
-	scroll.Size = UDim2.new(0.92, 0, 0.66, 0) 
-	scroll.Position = UDim2.new(0.5, 0, 0.62, 0) 
-	scroll.AnchorPoint = Vector2.new(0.5, 0.5)
+	scroll.Size                = UDim2.new(0.92, 0, 0.66, 0)
+	scroll.Position            = UDim2.new(0.5, 0, 0.62, 0)
+	scroll.AnchorPoint         = Vector2.new(0.5, 0.5)
 	scroll.BackgroundTransparency = 1
-	scroll.BorderSizePixel = 0
-	scroll.ScrollBarThickness = 6
-	scroll.Parent = main
+	scroll.BorderSizePixel     = 0
+	scroll.ScrollBarThickness  = 6
+	scroll.Parent              = main
 
-	-- Keep the padding so the first row doesn't touch the very edge of the scroll box
 	local padding = Instance.new("UIPadding")
-	padding.PaddingTop = UDim.new(0, 10) 
-	padding.Parent = scroll
+	padding.PaddingTop = UDim.new(0, 10)
+	padding.Parent     = scroll
 
 	local layout = Instance.new("UIListLayout", scroll)
-	layout.Padding = UDim.new(0, 10)
+	layout.Padding             = UDim.new(0, 10)
 	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
 	for _, entry in ipairs(Config.CannonUpgradeCosts) do
-		buildRow(scroll, 0, entry)
+		buildRow(scroll, entry)  -- FIX: removed dead 0 argument
 	end
 
-	-- CanvasSize update to ensure scrolling works perfectly
 	scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 25)
 end
+
 -- ── Start ─────────────────────────────────────────────────────────────────────
 
 function CannonShopClient.start()
@@ -424,6 +431,8 @@ function CannonShopClient.start()
 		if now - lastCheck < CHECK_INTERVAL then return end
 		lastCheck = now
 
+		updateBillboardVisibility()  -- MOVE: runs regardless of purchasePending
+
 		if purchasePending then return end
 
 		local dist = getClosestDist()
@@ -437,7 +446,6 @@ function CannonShopClient.start()
 			manuallyClosed = false
 		end
 
-		updateBillboardVisibility()
 	end)
 end
 

@@ -9,33 +9,33 @@ local BrainrotUI = require(game.ReplicatedStorage.BrainrotUI)
 
 local Pickup = {}
 
-local carrying = {}          -- player → Model (world visual while grabbed)
-local inventory = {}         -- player → Tool[]
-local equipped = {}          -- player → Tool (currently equipped, tracked server-side)
-local carryTracks = {}       -- player → AnimationTrack
+local carrying = {} -- player → Model (world visual while grabbed)
+local inventory = {} -- player → Tool[]
+local equipped = {} -- player → Tool (currently equipped, tracked server-side)
+local carryTracks = {} -- player → AnimationTrack
 local inventorySnapshot = {} -- respawn restore
 
 local onStashCallback = nil
 local onEquipCallback = nil
 
 local modelFolders = {
-	Common    = ServerStorage:WaitForChild("CommonBrainRotModels"),
-	Rare      = ServerStorage:WaitForChild("RareBrainRotModels"),
-	Epic      = ServerStorage:WaitForChild("EpicBrainRotModels"),
+	Common = ServerStorage:WaitForChild("CommonBrainRotModels"),
+	Rare = ServerStorage:WaitForChild("RareBrainRotModels"),
+	Epic = ServerStorage:WaitForChild("EpicBrainRotModels"),
 	Legendary = ServerStorage:WaitForChild("LegendaryBrainRotModels"),
-	Mythic    = ServerStorage:WaitForChild("MythicBrainRotModels"),
-	Secret    = ServerStorage:WaitForChild("SecretBrainRotModels"),
-	Divine    = ServerStorage:WaitForChild("DivineBrainRotModels"),
+	Mythic = ServerStorage:WaitForChild("MythicBrainRotModels"),
+	Secret = ServerStorage:WaitForChild("SecretBrainRotModels"),
+	Divine = ServerStorage:WaitForChild("DivineBrainRotModels"),
 }
 
 ------------------------------------------------
 -- Helper
 ------------------------------------------------
 local function getModelFolderName(rarity, mutation)
-    if mutation and mutation ~= "None" then
-        return mutation .. rarity .. "BrainRotModels"
-    end
-    return rarity .. "BrainRotModels"
+	if mutation and mutation ~= "None" then
+		return mutation .. rarity .. "BrainRotModels"
+	end
+	return rarity .. "BrainRotModels"
 end
 
 ------------------------------------------------
@@ -44,13 +44,19 @@ end
 
 local function startCarryAnim(player)
 	local character = player.Character
-	if not character then return nil end
+	if not character then
+		return nil
+	end
 
 	local humanoid = character:FindFirstChild("Humanoid")
-	if not humanoid then return nil end
+	if not humanoid then
+		return nil
+	end
 
 	local animator = humanoid:FindFirstChildOfClass("Animator")
-	if not animator then return nil end
+	if not animator then
+		return nil
+	end
 
 	local anim = Instance.new("Animation")
 	anim.AnimationId = Config.CarryAnimationId
@@ -101,7 +107,9 @@ end
 
 function Pickup.removeFromInventory(player, tool)
 	local items = inventory[player]
-	if not items then return end
+	if not items then
+		return
+	end
 
 	for i, t in ipairs(items) do
 		if t == tool then
@@ -117,7 +125,7 @@ end
 
 local function createBrainrotTool(player, data)
 	local level = data.level or 1
-	local baseIncome = data.incomePerSec  -- Stored as "base" because tools are level-aware now
+	local baseIncome = data.incomePerSec -- Stored as "base" because tools are level-aware now
 
 	local tool = Instance.new("Tool")
 	tool.Name = data.name
@@ -125,7 +133,7 @@ local function createBrainrotTool(player, data)
 	tool.RequiresHandle = true
 
 	tool:SetAttribute("Rarity", data.rarity)
-	tool:SetAttribute("IncomePerSec", baseIncome)  -- Base income; actual display uses level
+	tool:SetAttribute("IncomePerSec", baseIncome) -- Base income; actual display uses level
 	tool:SetAttribute("Level", level)
 	tool:SetAttribute("BrainrotTool", true)
 	tool:SetAttribute("Mutation", data.mutation or "None")
@@ -138,7 +146,15 @@ local function createBrainrotTool(player, data)
 	handle.Anchored = false
 	handle.Parent = tool
 
-	print("[Pickup] Created tool:", data.name, "L" .. level, "RequiresHandle:", tool.RequiresHandle, "Handle exists:", tool:FindFirstChild("Handle") ~= nil)
+	print(
+		"[Pickup] Created tool:",
+		data.name,
+		"L" .. level,
+		"RequiresHandle:",
+		tool.RequiresHandle,
+		"Handle exists:",
+		tool:FindFirstChild("Handle") ~= nil
+	)
 
 	local folderName = getModelFolderName(data.rarity, data.mutation or "None")
 	local folder = ServerStorage:FindFirstChild(folderName) or modelFolders[data.rarity]
@@ -153,10 +169,14 @@ local function createBrainrotTool(player, data)
 		equipped[player] = tool
 
 		local character = player.Character
-		if not character then return end
+		if not character then
+			return
+		end
 
 		local rootPart = character:FindFirstChild("HumanoidRootPart")
-		if not rootPart then return end
+		if not rootPart then
+			return
+		end
 
 		local visual = template:Clone()
 
@@ -182,9 +202,7 @@ local function createBrainrotTool(player, data)
 			end
 		end
 
-		visual:PivotTo(
-			rootPart.CFrame * CFrame.new(Config.CarryOffset) * Config.CarryRotation
-		)
+		visual:PivotTo(rootPart.CFrame * CFrame.new(Config.CarryOffset) * Config.CarryRotation)
 
 		visual.Parent = character
 
@@ -219,7 +237,7 @@ local function createBrainrotTool(player, data)
 			incomePerSec = currentIncome,
 			level = level > 1 and level or nil,
 			maxLevel = Brainrots.MaxLevel,
-			mutation = mutation,  -- ADD THIS
+			mutation = mutation, -- ADD THIS
 		})
 
 		carrying[player] = visual
@@ -236,8 +254,8 @@ local function createBrainrotTool(player, data)
 		equipped[player] = nil
 
 		local model = carrying[player]
-		if model then 
-			model:Destroy() 
+		if model then
+			model:Destroy()
 		end
 
 		carrying[player] = nil
@@ -297,10 +315,14 @@ function Pickup.grab(player, model)
 	end
 	Remotes.GrabStateChanged:FireClient(player, true)
 	local character = player.Character
-	if not character then return end
+	if not character then
+		return
+	end
 
 	local root = character:FindFirstChild("HumanoidRootPart")
-	if not root then return end
+	if not root then
+		return
+	end
 
 	local prompt = model.PrimaryPart:FindFirstChildOfClass("ProximityPrompt")
 	if prompt then
@@ -309,8 +331,6 @@ function Pickup.grab(player, model)
 
 	local name = model:GetAttribute("Name")
 	local rarity = model:GetAttribute("Rarity")
-	local incomePerSec = model:GetAttribute("IncomePerSec")
-	local mutation = model:GetAttribute("Mutation") or "None"
 
 	local partCount = 0
 	for _, p in model:GetDescendants() do
@@ -364,7 +384,9 @@ end
 
 function Pickup.stash(player)
 	local model = carrying[player]
-	if not model then return end
+	if not model then
+		return
+	end
 
 	stopCarryAnim(carryTracks[player])
 	carryTracks[player] = nil
@@ -400,7 +422,9 @@ end
 
 function Pickup.drop(player)
 	local model = carrying[player]
-	if not model then return end
+	if not model then
+		return
+	end
 
 	stopCarryAnim(carryTracks[player])
 	carryTracks[player] = nil
@@ -429,14 +453,11 @@ function Pickup.drop(player)
 		local dropPos = root.Position + Vector3.new(0, 0, 3)
 
 		local params = RaycastParams.new()
-		params.FilterDescendantsInstances = {model, player.Character}
+		params.FilterDescendantsInstances = { model, player.Character }
 		params.FilterType = Enum.RaycastFilterType.Exclude
 
-		local hit = workspace:Raycast(
-			Vector3.new(dropPos.X, root.Position.Y + 50, dropPos.Z),
-			Vector3.new(0, -100, 0),
-			params
-		)
+		local hit =
+			workspace:Raycast(Vector3.new(dropPos.X, root.Position.Y + 50, dropPos.Z), Vector3.new(0, -100, 0), params)
 
 		local rawHitY = hit and hit.Position.Y
 		local groundY
@@ -447,11 +468,16 @@ function Pickup.drop(player)
 			groundY = root.Position.Y - 3
 		end
 
-		print("[Pickup] DROP DEBUG",
-			"| rootY:", root.Position.Y,
-			"| hitY:", rawHitY or "MISS",
-			"| hitInstance:", hit and hit.Instance.Name or "nil",
-			"| groundY (final):", groundY
+		print(
+			"[Pickup] DROP DEBUG",
+			"| rootY:",
+			root.Position.Y,
+			"| hitY:",
+			rawHitY or "MISS",
+			"| hitInstance:",
+			hit and hit.Instance.Name or "nil",
+			"| groundY (final):",
+			groundY
 		)
 
 		model.Parent = workspace
@@ -478,7 +504,9 @@ function Pickup.drop(player)
 		newPrompt.Parent = model.PrimaryPart
 
 		newPrompt.Triggered:Connect(function(triggerPlayer)
-			if carrying[triggerPlayer] then return end
+			if carrying[triggerPlayer] then
+				return
+			end
 			Pickup.grab(triggerPlayer, model)
 		end)
 	end
@@ -534,44 +562,56 @@ end)
 local stashDebounce = {}
 
 local spawnZoneFolders = {
-    game.Workspace:WaitForChild("SpawnZones"),
-    game.Workspace:WaitForChild("SpawnZonesRare"),
-    game.Workspace:WaitForChild("SpawnZonesEpic"),
-    game.Workspace:WaitForChild("SpawnZonesLegendary"),
-    game.Workspace:WaitForChild("SpawnZonesMythic"),
-    game.Workspace:WaitForChild("SpawnZonesSecret"),
-    game.Workspace:WaitForChild("SpawnZonesDivine"),
+	game.Workspace:WaitForChild("SpawnZones"),
+	game.Workspace:WaitForChild("SpawnZonesRare"),
+	game.Workspace:WaitForChild("SpawnZonesEpic"),
+	game.Workspace:WaitForChild("SpawnZonesLegendary"),
+	game.Workspace:WaitForChild("SpawnZonesMythic"),
+	game.Workspace:WaitForChild("SpawnZonesSecret"),
+	game.Workspace:WaitForChild("SpawnZonesDivine"),
 }
 
 for _, folder in spawnZoneFolders do
-    local boundary = folder:WaitForChild("Boundary", 10)
-    if not boundary then
-        warn("[Pickup] No Boundary found in", folder.Name)
-        continue
-    end
+	local boundary = folder:WaitForChild("Boundary", 10)
+	if not boundary then
+		warn("[Pickup] No Boundary found in", folder.Name)
+		continue
+	end
 
-    boundary.TouchEnded:Connect(function(hit)
-        local character = hit.Parent
-        if not character then return end
+	boundary.TouchEnded:Connect(function(hit)
+		local character = hit.Parent
+		if not character then
+			return
+		end
 
-        local player = Players:GetPlayerFromCharacter(character)
-        if not player then return end
-        if not carrying[player] then return end
-        if equipped[player] then return end
+		local player = Players:GetPlayerFromCharacter(character)
+		if not player then
+			return
+		end
+		if not carrying[player] then
+			return
+		end
+		if equipped[player] then
+			return
+		end
 
-        if stashDebounce[player] then return end
-        stashDebounce[player] = true
+		if stashDebounce[player] then
+			return
+		end
+		stashDebounce[player] = true
 
-        Pickup.stash(player)
+		Pickup.stash(player)
 
-        task.delay(1, function()
-            stashDebounce[player] = nil
-        end)
-    end)
+		task.delay(1, function()
+			stashDebounce[player] = nil
+		end)
+	end)
 end
 
 Remotes.DropBrainrot.OnServerEvent:Connect(function(player)
-	if not carrying[player] then return end
+	if not carrying[player] then
+		return
+	end
 	Pickup.drop(player)
 end)
 

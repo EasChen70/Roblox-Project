@@ -1,6 +1,5 @@
 -- server/CannonShop.luau
 
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
@@ -9,14 +8,6 @@ local Remotes = require(ReplicatedStorage.Remotes)
 local PlayerData = require(ServerScriptService.PlayerData)
 
 local CannonShop = {}
-
-local function getCannonPower(player)
-	return player:GetAttribute("CannonPower") or 1
-end
-
-local function setCannonPower(player, value)
-	player:SetAttribute("CannonPower", value)
-end
 
 local function findUpgrade(amount)
 	for _, entry in Config.CannonUpgradeCosts do
@@ -29,7 +20,9 @@ end
 
 -- Actual cost = baseCost * scale^currentPower
 local function computeCost(baseCost, currentPower, amount)
-	if currentPower == 1 and amount == 1 then return 0 end  -- ADD THIS
+	if currentPower == 1 and amount == 1 then
+		return 0
+	end -- ADD THIS
 	return math.floor(baseCost * (Config.CannonCostScale ^ currentPower))
 end
 
@@ -42,26 +35,49 @@ function CannonShop.init()
 		end
 
 		local leaderstats = player:FindFirstChild("leaderstats")
-		if not leaderstats then return end
+		if not leaderstats then
+			return
+		end
 		local money = leaderstats:FindFirstChild("Money")
-		if not money then return end
+		if not money then
+			return
+		end
 
 		local currentPower = player:GetAttribute("CannonPower") or 1
 		local actualCost = computeCost(upgrade.cost, currentPower, upgrade.amount)
-		print("[CannonShop] Purchase attempt:", player.Name, 
-			"| amount:", amount,
-			"| currentPower:", currentPower,
-			"| actualCost:", actualCost,
-			"| money:", money.Value,
-			"| canAfford:", money.Value >= actualCost)
-		if money.Value < actualCost then return end
+		print(
+			"[CannonShop] Purchase attempt:",
+			player.Name,
+			"| amount:",
+			amount,
+			"| currentPower:",
+			currentPower,
+			"| actualCost:",
+			actualCost,
+			"| money:",
+			money.Value,
+			"| canAfford:",
+			money.Value >= actualCost
+		)
+		if money.Value < actualCost then
+			return
+		end
 
 		money.Value -= actualCost
 		local newPower = currentPower + upgrade.amount
 		player:SetAttribute("CannonPower", newPower)
 
 		PlayerData.requestSave(player)
-		print("[CannonShop]", player.Name, "upgraded cannon +", upgrade.amount, "→ Power:", newPower, "Cost was:", actualCost)
+		print(
+			"[CannonShop]",
+			player.Name,
+			"upgraded cannon +",
+			upgrade.amount,
+			"→ Power:",
+			newPower,
+			"Cost was:",
+			actualCost
+		)
 	end)
 end
 

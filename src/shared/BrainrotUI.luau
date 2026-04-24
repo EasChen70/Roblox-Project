@@ -2,7 +2,6 @@ local BrainrotUI = {}
 
 local Util = require(game.ReplicatedStorage.Util)
 local Brainrots = require(game.ReplicatedStorage.Brainrots)
-local Players = game:GetService("Players")
 
 local MAX_VISIBILITY_DISTANCE = 80
 
@@ -19,15 +18,14 @@ local RarityColors = {
 local LEVEL_COLOR = Color3.fromRGB(255, 215, 0)
 local UPGRADE_PINK = Color3.fromRGB(255, 60, 160)
 local UPGRADE_TEXT = Color3.fromRGB(255, 255, 255)
-local MAX_GLOW_COLOR = Color3.fromRGB(255, 215, 0)
 
-local function makeLabel(name, text, color, order, size)
+local function makeLabel(name, text, color, order)
 	local label = Instance.new("TextLabel")
 	label.Name = name
 	label.Text = text
 	label.TextColor3 = color
 	label.BackgroundTransparency = 1
-	label.Size = UDim2.new(1, 0, 0.2, 0)
+	label.Size = UDim2.fromScale(1, 0.2)
 	label.Font = Enum.Font.LuckiestGuy
 	label.TextScaled = true
 	label.LayoutOrder = order
@@ -43,7 +41,7 @@ end
 local function createBillboardGui(model, studsOffset, alwaysOnTop)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "BrainrotBillboard"
-	billboard.Size = UDim2.new(8, 0, 5, 0)
+	billboard.Size = UDim2.fromScale(8, 5)
 	billboard.MaxDistance = MAX_VISIBILITY_DISTANCE
 
 	if not studsOffset then
@@ -58,7 +56,7 @@ local function createBillboardGui(model, studsOffset, alwaysOnTop)
 
 	local frame = Instance.new("Frame")
 	frame.Name = "Container"
-	frame.Size = UDim2.new(1, 0, 1, 0)
+	frame.Size = UDim2.fromScale(1, 1)
 	frame.BackgroundTransparency = 1
 	frame.Parent = billboard
 
@@ -87,27 +85,26 @@ function BrainrotUI.createBillboard(model, data)
 
 	local billboard, frame = createBillboardGui(model, nil, false)
 	if level then
-		billboard.Size = UDim2.new(8, 0, 6, 0)
+		billboard.Size = UDim2.fromScale(8, 6)
 	end
 	local mutation = data.mutation or "None"
 	if mutation ~= "None" then
 		local mutColor = mutation == "Diamond" and Color3.fromRGB(100, 220, 255) or Color3.fromRGB(255, 200, 50)
-		local mutLabel = makeLabel("Mutation", "✦ " .. mutation:upper(), mutColor, -1, 24)
+		local mutLabel = makeLabel("Mutation", "✦ " .. mutation:upper(), mutColor, -1)
 		mutLabel.Parent = frame
 	end
 	if level then
-		local levelLabel = makeLabel("Level", formatLevelText(level, maxLevel), LEVEL_COLOR, 0, 24)
+		local levelLabel = makeLabel("Level", formatLevelText(level, maxLevel), LEVEL_COLOR, 0)
 		levelLabel.Parent = frame
 	end
 
-	local incomeLabel =
-		makeLabel("Income", Util.formatMoney(data.incomePerSec) .. "/s", Color3.fromRGB(85, 255, 85), 1, 22)
+	local incomeLabel = makeLabel("Income", Util.formatMoney(data.incomePerSec) .. "/s", Color3.fromRGB(85, 255, 85), 1)
 	incomeLabel.Parent = frame
 
-	local nameLabel = makeLabel("Name", data.name, Color3.fromRGB(255, 255, 255), 2, 20)
+	local nameLabel = makeLabel("Name", data.name, Color3.fromRGB(255, 255, 255), 2)
 	nameLabel.Parent = frame
 
-	local rarityLabel = makeLabel("Rarity", rarity, rarityColor, 3, 28)
+	local rarityLabel = makeLabel("Rarity", rarity, rarityColor, 3)
 	rarityLabel.Parent = frame
 	if rarity == "Secret" then
 		local stroke = rarityLabel:FindFirstChildOfClass("UIStroke")
@@ -147,14 +144,14 @@ function BrainrotUI.createWorldBillboard(model, data)
 	local rarityColor = RarityColors[rarity] or RarityColors.Common
 
 	local billboard, frame = createBillboardGui(model, Vector3.new(0, 12, 0), true)
-	billboard.Size = UDim2.new(8, 0, 6, 0)
+	billboard.Size = UDim2.fromScale(8, 6)
 	local mutation = data.mutation or "None"
 	if mutation ~= "None" then
 		local mutColor = mutation == "Diamond" and Color3.fromRGB(100, 220, 255) or Color3.fromRGB(255, 200, 50)
-		local mutLabel = makeLabel("Mutation", "✦ " .. mutation:upper(), mutColor, -1, 24)
+		local mutLabel = makeLabel("Mutation", "✦ " .. mutation:upper(), mutColor, -1)
 		mutLabel.Parent = frame
 	end
-	local timerLabel = makeLabel("Timer", "", Color3.fromRGB(255, 255, 255), 0, 24)
+	local timerLabel = makeLabel("Timer", "", Color3.fromRGB(255, 255, 255), 0)
 
 	local despawnTime = model:GetAttribute("DespawnRemaining")
 	if despawnTime then
@@ -162,14 +159,13 @@ function BrainrotUI.createWorldBillboard(model, data)
 		timerLabel.Parent = frame
 	end
 
-	local incomeLabel =
-		makeLabel("Income", Util.formatMoney(data.incomePerSec) .. "/s", Color3.fromRGB(85, 255, 85), 1, 22)
+	local incomeLabel = makeLabel("Income", Util.formatMoney(data.incomePerSec) .. "/s", Color3.fromRGB(85, 255, 85), 1)
 	incomeLabel.Parent = frame
 
-	local nameLabel = makeLabel("Name", data.name, Color3.fromRGB(255, 255, 255), 2, 20)
+	local nameLabel = makeLabel("Name", data.name, Color3.fromRGB(255, 255, 255), 2)
 	nameLabel.Parent = frame
 
-	local rarityLabel = makeLabel("Rarity", rarity, rarityColor, 3, 28)
+	local rarityLabel = makeLabel("Rarity", rarity, rarityColor, 3)
 	rarityLabel.Parent = frame
 
 	if rarity == "Secret" then
@@ -275,13 +271,13 @@ function BrainrotUI.createUpgradeBillboard(slot, data)
 
 	local frame = Instance.new("Frame")
 	frame.Name = "Container"
-	frame.Size = UDim2.new(1, 0, 1, 0)
+	frame.Size = UDim2.fromScale(1, 1)
 	frame.BackgroundTransparency = 1
 	frame.Parent = surfaceGui
 
 	local topRow = Instance.new("Frame")
 	topRow.Name = "TopRow"
-	topRow.Size = UDim2.new(1, 0, 0.65, 0)
+	topRow.Size = UDim2.fromScale(1, 0.65)
 	topRow.Position = UDim2.new(0, 0, 0, 0)
 	topRow.BackgroundTransparency = 1
 	topRow.Parent = frame
@@ -293,8 +289,8 @@ function BrainrotUI.createUpgradeBillboard(slot, data)
 	arrow.TextScaled = true
 	arrow.TextColor3 = LEVEL_COLOR
 	arrow.BackgroundTransparency = 1
-	arrow.Size = UDim2.new(0.22, 0, 1, 0)
-	arrow.Position = UDim2.new(0.04, 0, 0, 0)
+	arrow.Size = UDim2.fromScale(0.22, 1)
+	arrow.Position = UDim2.fromScale(0.04, 0)
 	arrow.Parent = topRow
 
 	local arrowStroke = Instance.new("UIStroke")
@@ -310,8 +306,8 @@ function BrainrotUI.createUpgradeBillboard(slot, data)
 	costLabel.TextScaled = true
 	costLabel.TextColor3 = UPGRADE_TEXT
 	costLabel.BackgroundTransparency = 1
-	costLabel.Size = UDim2.new(0.7, 0, 1, 0)
-	costLabel.Position = UDim2.new(0.28, 0, 0, 0)
+	costLabel.Size = UDim2.fromScale(0.7, 1)
+	costLabel.Position = UDim2.fromScale(0.28, 0)
 	costLabel.Parent = topRow
 
 	local costStroke = Instance.new("UIStroke")
@@ -326,8 +322,8 @@ function BrainrotUI.createUpgradeBillboard(slot, data)
 	transitionLabel.TextScaled = true
 	transitionLabel.TextColor3 = UPGRADE_TEXT
 	transitionLabel.BackgroundTransparency = 1
-	transitionLabel.Size = UDim2.new(1, 0, 0.3, 0)
-	transitionLabel.Position = UDim2.new(0, 0, 0.68, 0)
+	transitionLabel.Size = UDim2.fromScale(1, 0.3)
+	transitionLabel.Position = UDim2.fromScale(0, 0.68)
 	transitionLabel.Parent = frame
 
 	local transitionStroke = Instance.new("UIStroke")
@@ -406,8 +402,8 @@ function BrainrotUI.setUpgradeBillboardMax(billboardModel)
 		local costLabel = topRow:FindFirstChild("Cost")
 		if costLabel then
 			costLabel.Text = "MAX"
-			costLabel.Size = UDim2.new(1, 0, 1, 0)
-			costLabel.Position = UDim2.new(0, 0, 0, 0)
+			costLabel.Size = UDim2.fromScale(1, 1)
+			costLabel.Position = UDim2.fromScale(0, 0)
 			costLabel.TextColor3 = LEVEL_COLOR
 		end
 	end

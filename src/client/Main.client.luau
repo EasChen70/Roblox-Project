@@ -11,16 +11,22 @@ local myBaseName = nil
 local function createYourBaseIndicator(baseName)
 	local bases = game.Workspace.Map.Bases
 	local myBase = bases:FindFirstChild(baseName)
-	if not myBase then return end
+	if not myBase then
+		return
+	end
 
 	local sign = myBase:WaitForChild("Sign", 5)
-	if not sign then return end
+	if not sign then
+		return
+	end
 
-	if sign:FindFirstChild("YourBaseIndicator") then return end
+	if sign:FindFirstChild("YourBaseIndicator") then
+		return
+	end
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "YourBaseIndicator"
-	billboard.Size = UDim2.new(10, 0, 3, 0)
+	billboard.Size = UDim2.fromScale(10, 3)
 	billboard.StudsOffset = Vector3.new(0, 6, 0)
 	billboard.AlwaysOnTop = true
 	billboard.MaxDistance = 80
@@ -32,7 +38,7 @@ local function createYourBaseIndicator(baseName)
 	label.Text = "YOUR BASE"
 	label.TextColor3 = Color3.fromRGB(255, 255, 255)
 	label.BackgroundTransparency = 1
-	label.Size = UDim2.new(1, 0, 0.6, 0)
+	label.Size = UDim2.fromScale(1, 0.6)
 	label.Font = Enum.Font.LuckiestGuy
 	label.TextScaled = true
 	label.Parent = billboard
@@ -47,8 +53,8 @@ local function createYourBaseIndicator(baseName)
 	arrow.Text = "▼"
 	arrow.TextColor3 = Color3.fromRGB(255, 255, 255)
 	arrow.BackgroundTransparency = 1
-	arrow.Size = UDim2.new(1, 0, 0.4, 0)
-	arrow.Position = UDim2.new(0, 0, 0.6, 0)
+	arrow.Size = UDim2.fromScale(1, 0.4)
+	arrow.Position = UDim2.fromScale(0, 0.6)
 	arrow.Font = Enum.Font.LuckiestGuy
 	arrow.TextScaled = true
 	arrow.Parent = billboard
@@ -65,7 +71,9 @@ Remotes.BaseAssigned.OnClientEvent:Connect(function(baseName)
 end)
 
 task.delay(2, function()
-	if myBaseName then return end
+	if myBaseName then
+		return
+	end
 
 	local bases = game.Workspace.Map.Bases
 	for _, base in bases:GetChildren() do
@@ -88,7 +96,9 @@ task.delay(2, function()
 end)
 
 ProximityPromptService.PromptShown:Connect(function(prompt)
-	if prompt.ActionText ~= "Pick Up" and prompt.ActionText ~= "Sell" then return end
+	if prompt.ActionText ~= "Pick Up" and prompt.ActionText ~= "Sell" then
+		return
+	end
 
 	local current = prompt.Parent
 	while current and current ~= game.Workspace do
@@ -104,9 +114,13 @@ end)
 
 Remotes.CollectSlot.OnClientEvent:Connect(function()
 	local audio = game.Workspace.Map:FindFirstChild("Audio")
-	if not audio then return end
+	if not audio then
+		return
+	end
 	local cashSound = audio:FindFirstChild("cashEffect")
-	if not cashSound then return end
+	if not cashSound then
+		return
+	end
 
 	local sfx = cashSound:Clone()
 	sfx.Parent = player.PlayerGui
@@ -119,7 +133,9 @@ end)
 local dropButton = nil
 
 local function showDropButton()
-	if dropButton then return end
+	if dropButton then
+		return
+	end
 
 	local screen = Instance.new("ScreenGui")
 	screen.Name = "DropButtonGui"
@@ -127,8 +143,8 @@ local function showDropButton()
 	screen.Parent = player.PlayerGui
 
 	local btn = Instance.new("TextButton")
-	btn.Size = UDim2.new(0.15, 0, 0.08, 0)
-	btn.Position = UDim2.new(0.5, 0, 0.72, 0)
+	btn.Size = UDim2.fromScale(0.15, 0.08)
+	btn.Position = UDim2.fromScale(0.5, 0.72)
 	btn.AnchorPoint = Vector2.new(0.5, 0.5)
 	btn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
 	btn.Text = "Drop"
@@ -143,7 +159,7 @@ local function showDropButton()
 	texture.Name = "ButtonTexture"
 	texture.BackgroundTransparency = 1
 	texture.Image = "rbxassetid://6927295847"
-	texture.Size = UDim2.new(1, 0, 1, 0)
+	texture.Size = UDim2.fromScale(1, 1)
 	texture.ScaleType = Enum.ScaleType.Stretch -- Ensures it fills the whole button
 	texture.ImageTransparency = 0.4 -- Lower this if you want the texture stronger
 	texture.ZIndex = 1 -- Sits above the background but below the text
@@ -154,7 +170,7 @@ local function showDropButton()
 
 	-- Constraints
 	local aspect = Instance.new("UIAspectRatioConstraint")
-	aspect.AspectRatio = 2.66 
+	aspect.AspectRatio = 2.66
 	aspect.Parent = btn
 
 	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
@@ -208,10 +224,14 @@ Remotes.UpgradeSound.OnClientEvent:Connect(function()
 	end)
 end)
 Remotes.MaxLevelGlow.OnClientEvent:Connect(function(model)
-	if not model or not model.Parent then return end
+	if not model or not model.Parent then
+		return
+	end
 
 	local existing = model:FindFirstChild("MaxGlow")
-	if existing then existing:Destroy() end
+	if existing then
+		existing:Destroy()
+	end
 
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "MaxGlow"
