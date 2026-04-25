@@ -21,9 +21,9 @@ local PlayerData = {}
 -----CONFIG/CONSTANTS-----
 local DATA_STORE_NAME = "BrainrotCannonV1"
 
-local CURRENT_VERSION = 2 -- bumped from 1 for level field
+local CURRENT_VERSION = 3 -- bumped from 2 to 3 for rebirth
 
-local LOCK_EXPIRY = 60
+local LOCK_EXPIRY = 10
 local LOCK_REFRESH = 30
 
 local AUTOSAVE_INTERVAL = 10
@@ -59,6 +59,12 @@ migrations[2] = function(data)
 	return data
 end
 
+-- Migration v2 -> v3: default rebirthMultiplier on existing saves
+migrations[3] = function(data)
+	data.rebirthMultiplier = data.rebirthMultiplier or Config.RebirthBaseMultiplier
+	return data
+end
+
 -----HELPERS-----
 
 local function createDefault()
@@ -67,6 +73,7 @@ local function createDefault()
 		money = 0,
 		rebirths = 0,
 		cannonPower = 1,
+		rebirthMultiplier = Config.RebirthBaseMultiplier,
 		slots = {},
 		inventory = {},
 	}
@@ -181,6 +188,7 @@ local function readLiveState(player, data)
 			data.rebirths = rebirths.Value
 		end
 		data.cannonPower = player:GetAttribute("CannonPower") or 1
+		data.rebirthMultiplier = player:GetAttribute("RebirthMultiplier") or Config.RebirthBaseMultiplier
 	end
 
 	data.slots = readSlots(player)
@@ -287,6 +295,7 @@ function PlayerData.load(player)
 	leaderstats.Money.Value = loadedData.money or 0
 	leaderstats.Rebirths.Value = loadedData.rebirths or 0
 	player:SetAttribute("CannonPower", loadedData.cannonPower or 1)
+	player:SetAttribute("RebirthMultiplier", loadedData.rebirthMultiplier or Config.RebirthBaseMultiplier)
 
 	print(
 		"[PlayerData] Loaded",

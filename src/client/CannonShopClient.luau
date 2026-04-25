@@ -47,7 +47,9 @@ end
 
 local function getCannonModels()
 	local map = workspace:FindFirstChild("Map")
-	if not map then return {} end
+	if not map then
+		return {}
+	end
 	local results = {}
 	for _, obj in map:GetDescendants() do
 		if obj.Name == "CannonModel" and obj:IsA("Model") then
@@ -358,8 +360,8 @@ local function openShop()
 	Instance.new("UIAspectRatioConstraint", main).AspectRatio = 1.2
 
 	local mStroke = Instance.new("UIStroke")
-	mStroke.Thickness = 4
-	mStroke.Color = Color3.fromRGB(0, 0, 0)
+	mStroke.Thickness = 3
+	mStroke.Color = Color3.fromRGB(255, 255, 255)
 	mStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	mStroke.Parent = main
 
@@ -452,7 +454,9 @@ function CannonShopClient.start()
 
 	task.spawn(function()
 		local map = workspace:WaitForChild("Map", 10)
-		if not map then return end
+		if not map then
+			return
+		end
 
 		-- Wait until at least one CannonModel exists
 		local attempts = 0

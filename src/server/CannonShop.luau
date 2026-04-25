@@ -44,11 +44,11 @@ function CannonShop.init()
 		end
 
 		local currentPower = player:GetAttribute("CannonPower") or 1
-		local actualCost = computeCost(upgrade.cost, currentPower, upgrade.amount)
 		if currentPower + upgrade.amount > Config.MaxCannonPower then
 			warn("[CannonShop] Power cap exceeded attempt from", player.Name)
 			return
 		end
+		local actualCost = computeCost(upgrade.cost, currentPower, upgrade.amount)
 		print(
 			"[CannonShop] Purchase attempt:",
 			player.Name,

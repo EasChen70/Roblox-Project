@@ -127,14 +127,16 @@ function Income.start()
 					if not brainrot then continue end
 
 					local incomePerSec = brainrot:GetAttribute("IncomePerSec") or 0
-					totalIncome += incomePerSec
+					local rebirthMult = (owner and owner:GetAttribute("RebirthMultiplier")) or 1.0
+					local effectiveIncome = math.floor(incomePerSec * rebirthMult)
+					totalIncome += effectiveIncome
 
 					local current = slot:GetAttribute("AccumulatedCash") or 0
-					slot:SetAttribute("AccumulatedCash", current + incomePerSec)
+					slot:SetAttribute("AccumulatedCash", current + effectiveIncome)
 
 					local collectButton = slot:FindFirstChild("CollectButton")
 					if collectButton then
-						updateBillboard(collectButton, current + incomePerSec)
+						updateBillboard(collectButton, current + effectiveIncome)
 					end
 				end
 
