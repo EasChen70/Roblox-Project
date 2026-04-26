@@ -23,8 +23,8 @@ local DATA_STORE_NAME = "BrainrotCannonV1"
 
 local CURRENT_VERSION = 3 -- bumped from 2 to 3 for rebirth
 
-local LOCK_EXPIRY = 10
-local LOCK_REFRESH = 30
+local LOCK_EXPIRY = 60
+local LOCK_REFRESH = 20
 
 local AUTOSAVE_INTERVAL = 10
 local SAVE_THROTTLE = 6 -- only used by PlayerData.save (autosave safety net)
