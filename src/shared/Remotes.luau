@@ -27,7 +27,7 @@ if RunService:IsServer() then
 	folder.Name = "RemoteEvents"
 	folder.Parent = ReplicatedStorage
 
-	for _, name in remoteNames do
+	for _, name in ipairs(remoteNames) do
 		local remote = Instance.new("RemoteEvent")
 		remote.Name = name
 		remote.Parent = folder
@@ -37,7 +37,7 @@ else
 	-- Client waits for them to exist
 	local folder = ReplicatedStorage:WaitForChild("RemoteEvents")
 
-	for _, name in remoteNames do
+	for _, name in ipairs(remoteNames) do
 		Remotes[name] = folder:WaitForChild(name)
 	end
 end

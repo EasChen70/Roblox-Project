@@ -140,59 +140,78 @@ function BrainrotUI.updateBillboardLevel(model, newLevel, newIncome, maxLevel)
 end
 
 function BrainrotUI.createWorldBillboard(model, data)
-	local rarity = data.rarity or "Common"
-	local rarityColor = RarityColors[rarity] or RarityColors.Common
+    local rarity = data.rarity or "Common"
+    local rarityColor = RarityColors[rarity] or RarityColors.Common
 
-	local billboard, frame = createBillboardGui(model, Vector3.new(0, 12, 0), true)
-	billboard.Size = UDim2.fromScale(8, 6)
-	local mutation = data.mutation or "None"
-	if mutation ~= "None" then
-		local mutColor = mutation == "Diamond" and Color3.fromRGB(100, 220, 255) or Color3.fromRGB(255, 200, 50)
-		local mutLabel = makeLabel("Mutation", "✦ " .. mutation:upper(), mutColor, -1)
-		mutLabel.Parent = frame
-	end
-	local timerLabel = makeLabel("Timer", "", Color3.fromRGB(255, 255, 255), 0)
+    local billboard, frame = createBillboardGui(model, Vector3.new(0, 12, 0), true)
+    billboard.Size = UDim2.fromScale(8, 6)
+    
+    local mutation = data.mutation or "None"
+    if mutation ~= "None" then
+        local mutColor = mutation == "Diamond" and Color3.fromRGB(100, 220, 255) or Color3.fromRGB(255, 200, 50)
+        local mutLabel = makeLabel("Mutation", "✦ " .. mutation:upper(), mutColor, -1)
+        mutLabel.Parent = frame
+    end
+    
+    local timerLabel = makeLabel("Timer", "", Color3.fromRGB(255, 255, 255), 0)
 
-	local despawnTime = model:GetAttribute("DespawnRemaining")
-	if despawnTime then
-		timerLabel.Text = "🕐 " .. math.ceil(despawnTime) .. "s"
-		timerLabel.Parent = frame
-	end
+    local despawnTime = model:GetAttribute("DespawnRemaining")
+    if despawnTime then
+        timerLabel.Text = "🕐 " .. math.ceil(despawnTime) .. "s"
+        timerLabel.Parent = frame
+    end
 
-	local incomeLabel = makeLabel("Income", Util.formatMoney(data.incomePerSec) .. "/s", Color3.fromRGB(85, 255, 85), 1)
-	incomeLabel.Parent = frame
+    local incomeLabel = makeLabel("Income", Util.formatMoney(data.incomePerSec) .. "/s", Color3.fromRGB(85, 255, 85), 1)
+    incomeLabel.Parent = frame
 
-	local nameLabel = makeLabel("Name", data.name, Color3.fromRGB(255, 255, 255), 2)
-	nameLabel.Parent = frame
+    local nameLabel = makeLabel("Name", data.name, Color3.fromRGB(255, 255, 255), 2)
+    nameLabel.Parent = frame
 
-	local rarityLabel = makeLabel("Rarity", rarity, rarityColor, 3)
-	rarityLabel.Parent = frame
+    local rarityLabel = makeLabel("Rarity", rarity, rarityColor, 3)
+    rarityLabel.Parent = frame
 
-	if rarity == "Secret" then
-		local stroke = rarityLabel:FindFirstChildOfClass("UIStroke")
-		if stroke then
-			stroke.Color = Color3.fromRGB(255, 255, 255)
-			stroke.Thickness = 0.5
-		end
-	end
+    if rarity == "Secret" then
+        local stroke = rarityLabel:FindFirstChildOfClass("UIStroke")
+        if stroke then
+            stroke.Color = Color3.fromRGB(255, 255, 255)
+            stroke.Thickness = 0.5
+        end
+    end
 
-	if despawnTime then
-		task.spawn(function()
-			while model.Parent and billboard.Parent do
-				local remaining = model:GetAttribute("DespawnRemaining")
-				if not remaining then
-					break
-				end
-				timerLabel.Text = "🕐 " .. math.ceil(remaining) .. "s"
-				if remaining <= 10 then
-					timerLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
-				end
-				task.wait(1)
-			end
-		end)
-	end
+    -- === OPTIMIZED TICK() TIMER LOGIC ===
+    if despawnTime then
+        local currentRemaining = despawnTime
+        local localStartTime = tick()
 
-	return billboard
+        -- Listen for state changes from the server (e.g. Pause/Resume)
+        model:GetAttributeChangedSignal("DespawnRemaining"):Connect(function()
+            currentRemaining = model:GetAttribute("DespawnRemaining") or 0
+            localStartTime = tick() -- Reset our local clock to match the new server reality
+        end)
+
+        task.spawn(function()
+            while model.Parent and billboard.Parent do
+                -- Calculate display time locally, 0 network cost
+                local elapsed = tick() - localStartTime
+                local displayTime = math.max(0, currentRemaining - elapsed)
+                
+                timerLabel.Text = "🕐 " .. math.ceil(displayTime) .. "s"
+                
+                if displayTime <= 10 then
+                    timerLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+                else
+                    timerLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- Reset color just in case
+                end
+                
+                -- We don't break on <= 0 here because the server handles the actual destruction.
+                -- It will just sit at 0s for a split second before the model is destroyed.
+                
+                task.wait(0.5) -- Runs twice a second for a slightly smoother visual update
+            end
+        end)
+    end
+
+    return billboard
 end
 
 local function getUpgradeSignCFrame(slot)
