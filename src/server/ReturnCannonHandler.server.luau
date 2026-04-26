@@ -1,6 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
-local CannonDropEvent = ReplicatedStorage:WaitForChild("CannonDropEvent")
+local Remotes = require(ReplicatedStorage.Remotes) -- CHANGED: use Remotes module
 
 local function setupReturnCannon(model)
 	local seat = model:FindFirstChild("CannonSeat", true)
@@ -32,7 +32,7 @@ local function setupReturnCannon(model)
 
 		prompt.Enabled = false
 
-		CannonDropEvent:FireClient(player, "Reset")
+		Remotes.CannonDropEvent:FireClient(player, "Reset") -- CHANGED
 		hrp.Anchored = true
 		hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 		hum.PlatformStand = false
@@ -43,12 +43,8 @@ local function setupReturnCannon(model)
 		if blastSound then 
 			blastSound:Play() 
 		end
-		hrp.Anchored = false
-		pcall(function() 
-			hrp:SetNetworkOwner(player) 
-		end)
-		hum.PlatformStand = true
 
+		-- CHANGED: calculate velocity while anchored (server owns, position stable)
 		local targetPos = playerBase:GetPivot().Position
 		local g = workspace.Gravity
 		local delta = targetPos - hrp.Position
@@ -57,10 +53,14 @@ local function setupReturnCannon(model)
 
 		local horizontalVel = Vector3.new(delta.X / T, 0, delta.Z / T)
 		local verticalVel = math.max(delta.Y / T + 0.5 * g * T, 80)
+		local launchVelocity = horizontalVel + Vector3.new(0, verticalVel, 0)
 
-		hrp.AssemblyLinearVelocity = horizontalVel + Vector3.new(0, verticalVel, 0)
-
-		CannonDropEvent:FireClient(player, "Launch")
+		-- CHANGED: unanchor then fire velocity to client — client applies to HRP it owns
+		-- removed SetNetworkOwner (unreliable, caused velocity assignment to fail)
+		hrp.Anchored = false
+		print("[ReturnCannon] Unanchored, firing Launch to client, velocity:", launchVelocity)
+		hum.PlatformStand = true
+		Remotes.CannonDropEvent:FireClient(player, "Launch", launchVelocity) -- CHANGED
 
 		local launchTime = tick()
 
@@ -79,9 +79,9 @@ local function setupReturnCannon(model)
 
 					if horizontalDist < 15 or flightTime >= T then
 						arrived = true
-						CannonDropEvent:FireClient(player, "Reset")
+						Remotes.CannonDropEvent:FireClient(player, "Reset") -- CHANGED
 
-						hrp.AssemblyLinearVelocity = Vector3.new(0, -120, 0)
+						Remotes.CannonDropEvent:FireClient(player, "Descend", Vector3.new(0, -120, 0))
 
 						local landed = false
 						while not landed and hrp.Parent do
@@ -101,6 +101,7 @@ local function setupReturnCannon(model)
 						hum:ChangeState(Enum.HumanoidStateType.Landed)
 						task.wait(0.15)
 						hrp.Anchored = false
+						print("[ReturnCannon] Landing complete, player unanchored")
 					end
 				else
 					break
@@ -116,17 +117,15 @@ local function setupReturnCannon(model)
 	end)
 end
 
--- Wire up all existing ReturnCannonModels
 for _, obj in workspace:GetDescendants() do
 	if obj.Name == "ReturnCannonModel" and obj:IsA("Model") then
 		setupReturnCannon(obj)
 	end
 end
 
--- Handle any added later
 workspace.DescendantAdded:Connect(function(obj)
 	if obj.Name == "ReturnCannonModel" and obj:IsA("Model") then
-		task.wait() -- let it fully load
+		task.wait()
 		setupReturnCannon(obj)
 	end
-end)
+end) 

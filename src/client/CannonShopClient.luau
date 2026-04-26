@@ -47,12 +47,10 @@ end
 
 local function getCannonModels()
 	local map = workspace:FindFirstChild("Map")
-	if not map then
-		return {}
-	end
+	if not map then return {} end
 	local results = {}
 	for _, obj in map:GetDescendants() do
-		if obj.Name == "CannonModel" and obj:IsA("Model") then
+		if obj:IsA("Model") and string.find(obj.Name, "CannonModel") then
 			table.insert(results, obj)
 		end
 	end
