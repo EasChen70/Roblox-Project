@@ -7,7 +7,7 @@ local Config = {
 	IncomeTickRate = 1,
 	PlacementYOffset = -0.5,
 	UpgradeSoundId = "rbxassetid://76834925120308",
-	
+
 	-- Spawner
 	SpawnInterval = 3,
 	MaxSpawns = 10,
@@ -23,16 +23,16 @@ local Config = {
 	CarryAnimationId = "rbxassetid://76257603071803",
 
 	--CannonShop
-	CannonCostScale = 1.12,  -- cost multiplier per power level owned
+	CannonCostScale = 1.12, -- cost multiplier per power level owned
 	MaxCannonPower = 130, -- set to whatever cannon launch physics top-end is
 	CannonUpgradeCosts = {
-		{amount = 1,  cost = 10000},
-		{amount = 5,  cost = 50000},
-		{amount = 10, cost = 100000},
+		{ amount = 1, cost = 10000 },
+		{ amount = 5, cost = 50000 },
+		{ amount = 10, cost = 100000 },
 	},
 
-	MutationGoldChance = 0.10,
-	MutationDiamondChance = 0.05,
+	MutationGoldChance = 0.08,
+	MutationDiamondChance = 0.04,
 	MutationMultipliers = {
 		None = 1.0,
 		Gold = 1.5,
@@ -42,11 +42,11 @@ local Config = {
 	-- Rebirth
 	RebirthBaseMultiplier = 1.0,
 	RebirthRequirements = {
-		{ rebirth = 1, power = 20,  multiplier = 1.5 },
-		{ rebirth = 2, power = 40,  multiplier = 2.0 },
-		{ rebirth = 3, power = 60,  multiplier = 2.5 },
-		{ rebirth = 4, power = 80,  multiplier = 3.0 },
-		{ rebirth = 5, power = 90,  multiplier = 3.5 },
+		{ rebirth = 1, power = 20, multiplier = 1.5 },
+		{ rebirth = 2, power = 40, multiplier = 2.0 },
+		{ rebirth = 3, power = 60, multiplier = 2.5 },
+		{ rebirth = 4, power = 80, multiplier = 3.0 },
+		{ rebirth = 5, power = 90, multiplier = 3.5 },
 		{ rebirth = 6, power = 100, multiplier = 4.0 },
 		{ rebirth = 7, power = 110, multiplier = 4.5 },
 		{ rebirth = 8, power = 120, multiplier = 5.0 },

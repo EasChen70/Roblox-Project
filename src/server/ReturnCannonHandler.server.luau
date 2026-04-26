@@ -1,6 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
-local Remotes = require(ReplicatedStorage.Remotes) -- CHANGED: use Remotes module
+local Remotes = require(ReplicatedStorage.Remotes)
 
 local CONFIG = {
 	SPEED_DIVISOR = 40,
@@ -23,7 +23,13 @@ local function setupReturnCannon(model)
 		return
 	end
 
-	local phase = "IDLE" -- CHANGED: IDLE | LAUNCH | FLIGHT | DESCEND
+	-- Disable seat auto-sit. The seat's CFrame is still used as the launch
+	-- pose anchor, but Roblox's built-in Touched-handler that snaps passing
+	-- characters onto Seat instances is now off — important because flights
+	-- can pass near other cannons' seats and get hijacked mid-air.
+	if seat:IsA("Seat") or seat:IsA("VehicleSeat") then
+		seat.Disabled = true
+	end
 
 	prompt.Triggered:Connect(function(player)
 		local char = player.Character
@@ -34,130 +40,169 @@ local function setupReturnCannon(model)
 		local success, result = pcall(function()
 			return require(ServerScriptService.Base).getPlayerBase(player)
 		end)
-		if success then 
-			playerBase = result 
+		if success then
+			playerBase = result
 		end
 
 		if not (hrp and hum and playerBase) then
-			prompt.Enabled = true
 			return
 		end
 
 		prompt.Enabled = false
 
-		phase = "IDLE" -- CHANGED
-
-		if phase == "IDLE" then -- CHANGED
+		-- Guard the synchronous pre-launch + launch portion. If any hrp/hum
+		-- write throws (character destroyed mid-handler), prompt would
+		-- otherwise stay disabled forever.
+		local handlerOk, handlerErr = pcall(function()
 			Remotes.CannonDropEvent:FireClient(player, "Reset")
-		end
 
-		phase = "LAUNCH" -- CHANGED
+			hrp.Anchored = true
+			hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+			hum.PlatformStand = false
+			hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+			hrp.CFrame = seat.CFrame * CFrame.Angles(math.rad(-45), 0, 0) * CFrame.new(0, 1, 0)
 
-		hrp.Anchored = true
-		hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-		hum.PlatformStand = false
-		hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-		hrp.CFrame = seat.CFrame * CFrame.Angles(math.rad(-45), 0, 0) * CFrame.new(0, 1, 0)
+			task.wait(1)
 
-		task.wait(1)
-
-		if blastSound then
-			blastSound:Play()
-		end
-
-		local targetPos = playerBase:GetPivot().Position
-		local g = workspace.Gravity
-		local delta = targetPos - hrp.Position
-		local totalDistance = delta.Magnitude
-
-		local T = math.clamp(
-			totalDistance / CONFIG.SPEED_DIVISOR,
-			CONFIG.MIN_TIME,
-			CONFIG.MAX_TIME
-		)
-
-		local horizontalVel = Vector3.new(delta.X / T, 0, delta.Z / T)
-
-		local verticalVel = math.max(
-			delta.Y / T + 0.5 * g * T,
-			CONFIG.MIN_VERTICAL
-		)
-
-		local launchVelocity = horizontalVel + Vector3.new(0, verticalVel, 0)
-
-		hrp.Anchored = false
-		hum.PlatformStand = true
-
-		Remotes.CannonDropEvent:FireClient(player, "Launch", launchVelocity)
-
-		local launchTime = tick()
-
-		task.spawn(function()
-			local arrived = false
-			local timeout = tick() + 10
-
-			while not arrived and tick() < timeout do
-				if hrp and hrp.Parent then
-					local currentPos = hrp.Position
-
-					local horizontalDist = (
-						Vector3.new(targetPos.X, 0, targetPos.Z) -
-						Vector3.new(currentPos.X, 0, currentPos.Z)
-					).Magnitude
-
-					local flightTime = tick() - launchTime
-
-					if horizontalDist < CONFIG.ARRIVAL_RADIUS or flightTime >= T then
-						arrived = true
-
-						-- CHANGED: removed Reset here completely
-						phase = "DESCEND" -- CHANGED
-
-						Remotes.CannonDropEvent:FireClient(
-							player,
-							"Descend",
-							CONFIG.DESCEND_VELOCITY
-						)
-
-						local landed = false
-						while not landed and hrp.Parent do
-							local rayParams = RaycastParams.new()
-							rayParams.FilterDescendantsInstances = {char}
-							rayParams.FilterType = Enum.RaycastFilterType.Exclude
-
-							local ray = workspace:Raycast(
-								hrp.Position,
-								CONFIG.RAYCAST_DISTANCE,
-								rayParams
-							)
-
-							if ray or hrp.Position.Y <= (targetPos.Y + CONFIG.LANDING_Y_TOLERANCE) then
-								landed = true
-							end
-
-							task.wait()
-						end
-
-						hrp.Anchored = true
-						hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-						hum.PlatformStand = false
-						hum:ChangeState(Enum.HumanoidStateType.Landed)
-
-						task.wait(0.15)
-
-						hrp.Anchored = false
-
-						print("[ReturnCannon] Landing complete, player unanchored")
-					end
-				else
-					break
-				end
-
-				task.wait()
+			-- Re-check after the yield — character may have died or left
+			if not (hrp.Parent and hum.Parent) then
+				error("character lost during pre-launch wait")
 			end
 
-			prompt.Enabled = true
+			if blastSound then
+				blastSound:Play()
+			end
+
+			local targetPos = playerBase:GetPivot().Position
+			local g = workspace.Gravity
+			local delta = targetPos - hrp.Position
+			local totalDistance = delta.Magnitude
+
+			local T = math.clamp(
+				totalDistance / CONFIG.SPEED_DIVISOR,
+				CONFIG.MIN_TIME,
+				CONFIG.MAX_TIME
+			)
+
+			local horizontalVel = Vector3.new(delta.X / T, 0, delta.Z / T)
+			local verticalVel = math.max(
+				delta.Y / T + 0.5 * g * T,
+				CONFIG.MIN_VERTICAL
+			)
+			local launchVelocity = horizontalVel + Vector3.new(0, verticalVel, 0)
+
+			hrp.Anchored = false
+
+			-- Restore explicit network ownership to the launching player.
+			-- Without this, Roblox's automatic ownership assignment can flip
+			-- HRP ownership to the server mid-flight (e.g. when the player
+			-- moves out of the closest-player range), which lets server-side
+			-- seat Touched-handlers grab the character. Matches the old
+			-- working implementation.
+			pcall(function()
+				hrp:SetNetworkOwner(player)
+			end)
+
+			hum.PlatformStand = true
+
+			Remotes.CannonDropEvent:FireClient(player, "Launch", launchVelocity)
+
+			local launchTime = tick()
+
+			task.spawn(function()
+				local taskOk, taskErr = pcall(function()
+					local arrived = false
+					local timeout = tick() + 10
+
+					while not arrived and tick() < timeout do
+						if hrp and hrp.Parent then
+							local currentPos = hrp.Position
+
+							local horizontalDist = (
+								Vector3.new(targetPos.X, 0, targetPos.Z) -
+								Vector3.new(currentPos.X, 0, currentPos.Z)
+							).Magnitude
+
+							local flightTime = tick() - launchTime
+
+							if horizontalDist < CONFIG.ARRIVAL_RADIUS or flightTime >= T then
+								arrived = true
+
+								Remotes.CannonDropEvent:FireClient(
+									player,
+									"Descend",
+									CONFIG.DESCEND_VELOCITY
+								)
+
+								local landed = false
+								local landingGroundY = nil
+								local descendStart = tick()
+
+								while not landed and hrp.Parent and tick() - descendStart < 5 do
+									local rayParams = RaycastParams.new()
+									rayParams.FilterDescendantsInstances = {char}
+									rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+									local ray = workspace:Raycast(
+										hrp.Position,
+										CONFIG.RAYCAST_DISTANCE,
+										rayParams
+									)
+
+									if ray then
+										landed = true
+										landingGroundY = ray.Position.Y
+									elseif hrp.Position.Y <= (targetPos.Y + CONFIG.LANDING_Y_TOLERANCE) then
+										landed = true
+										-- no ground data; skip snap, fall through to existing finalization
+									end
+
+									task.wait()
+								end
+
+								-- Only finalize landing if hrp survived the descent
+								if hrp.Parent then
+									hrp.Anchored = true
+
+									if landingGroundY then
+										hrp.CFrame = CFrame.new(hrp.Position.X, landingGroundY + 2, hrp.Position.Z)
+									end
+
+									hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+									hum.PlatformStand = false
+									hum:ChangeState(Enum.HumanoidStateType.Landed)
+
+									task.wait(0.15)
+
+									if hrp.Parent then
+										hrp.Anchored = false
+									end
+
+									print("[ReturnCannon] Landing complete, player unanchored")
+								end
+							end
+						else
+							break
+						end
+
+						task.wait()
+					end
+				end)
+
+				if not taskOk then
+					warn("[ReturnCannon] flight task error for", player.Name, "—", taskErr)
+				end
+
+				-- Always re-enable the prompt, even if the flight task errored
+				prompt.Enabled = true
+			end)
 		end)
+
+		if not handlerOk then
+			warn("[ReturnCannon] setup error for", player.Name, "—", handlerErr)
+			-- Setup errored before task.spawn ran; restore prompt manually
+			prompt.Enabled = true
+		end
 	end)
 end
 
