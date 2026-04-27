@@ -157,7 +157,7 @@ while task.wait(0.03) do
 			local dist = (Vector2.new(pRoot.Position.X, pRoot.Position.Z) - Vector2.new(rootPart.Position.X, rootPart.Position.Z)).Magnitude
 
 			if dist < RING_RADIUS and not hitCooldowns[player.Name] then
-				if pHum and pHum.Health > 0 then
+				if pHum and pHum.Health > 0 and not pHum.PlatformStand then
 					hitCooldowns[player.Name] = true 
 
 					-- [[ NEW: DROP ITEM ON HIT ]] --

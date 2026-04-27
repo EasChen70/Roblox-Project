@@ -2,6 +2,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local Remotes = require(ReplicatedStorage.Remotes)
 
+local DEBUG_CANNON = true
+local DEBUG_SAMPLE_INTERVAL = 0.25
+local nextFlightDebugId = 0
+
 local CONFIG = {
 	SPEED_DIVISOR = 40,
 	MIN_TIME = 1.2,
@@ -12,6 +16,43 @@ local CONFIG = {
 	RAYCAST_DISTANCE = Vector3.new(0, -7, 0),
 	LANDING_Y_TOLERANCE = 3.5,
 }
+
+local function formatVector3(value)
+	return string.format("(%.2f, %.2f, %.2f)", value.X, value.Y, value.Z)
+end
+
+local function getFlightDebugId(player)
+	nextFlightDebugId += 1
+	return string.format("%s-%d", player.Name, nextFlightDebugId)
+end
+
+local function getNetworkOwnerLabel(part)
+	if not part or not part.Parent then
+		return "missing"
+	end
+
+	local ok, owner = pcall(function()
+		return part:GetNetworkOwner()
+	end)
+
+	if not ok then
+		return "error:" .. tostring(owner)
+	end
+
+	return owner and owner.Name or "server"
+end
+
+local function debugLog(debugId, ...)
+	if not DEBUG_CANNON then
+		return
+	end
+
+	print(string.format("[ReturnCannon][%s]", debugId), ...)
+end
+
+local function debugWarn(debugId, ...)
+	warn(string.format("[ReturnCannon][%s]", debugId), ...)
+end
 
 local function setupReturnCannon(model)
 	local seat = model:FindFirstChild("CannonSeat", true)
@@ -25,7 +66,7 @@ local function setupReturnCannon(model)
 
 	-- Disable seat auto-sit. The seat's CFrame is still used as the launch
 	-- pose anchor, but Roblox's built-in Touched-handler that snaps passing
-	-- characters onto Seat instances is now off — important because flights
+	-- characters onto Seat instances is now off - important because flights
 	-- can pass near other cannons' seats and get hijacked mid-air.
 	if seat:IsA("Seat") or seat:IsA("VehicleSeat") then
 		seat.Disabled = true
@@ -48,6 +89,7 @@ local function setupReturnCannon(model)
 			return
 		end
 
+		local debugId = getFlightDebugId(player)
 		prompt.Enabled = false
 
 		-- Guard the synchronous pre-launch + launch portion. If any hrp/hum
@@ -64,7 +106,7 @@ local function setupReturnCannon(model)
 
 			task.wait(1)
 
-			-- Re-check after the yield — character may have died or left
+			-- Re-check after the yield - character may have died or left
 			if not (hrp.Parent and hum.Parent) then
 				error("character lost during pre-launch wait")
 			end
@@ -105,6 +147,16 @@ local function setupReturnCannon(model)
 
 			hum.PlatformStand = true
 
+			debugLog(
+				debugId,
+				"launch setup",
+				"player=" .. player.Name,
+				"targetPos=" .. formatVector3(targetPos),
+				"T=" .. string.format("%.2f", T),
+				"launchVelocity=" .. formatVector3(launchVelocity),
+				"ownerAfterSet=" .. getNetworkOwnerLabel(hrp)
+			)
+
 			Remotes.CannonDropEvent:FireClient(player, "Launch", launchVelocity)
 
 			local launchTime = tick()
@@ -113,20 +165,64 @@ local function setupReturnCannon(model)
 				local taskOk, taskErr = pcall(function()
 					local arrived = false
 					local timeout = tick() + 10
+					local lastDebugSample = launchTime
+					local lastOwnerLabel = getNetworkOwnerLabel(hrp)
 
 					while not arrived and tick() < timeout do
 						if hrp and hrp.Parent then
 							local currentPos = hrp.Position
-
+							local currentVelocity = hrp.AssemblyLinearVelocity
 							local horizontalDist = (
 								Vector3.new(targetPos.X, 0, targetPos.Z) -
 								Vector3.new(currentPos.X, 0, currentPos.Z)
 							).Magnitude
-
 							local flightTime = tick() - launchTime
+							local ownerLabel = getNetworkOwnerLabel(hrp)
 
-							if horizontalDist < CONFIG.ARRIVAL_RADIUS or flightTime >= T then
+							if ownerLabel ~= lastOwnerLabel then
+								debugLog(
+									debugId,
+									"network owner changed",
+									"owner=" .. ownerLabel,
+									"flightTime=" .. string.format("%.2f", flightTime)
+								)
+								lastOwnerLabel = ownerLabel
+							end
+
+							if DEBUG_CANNON and tick() - lastDebugSample >= DEBUG_SAMPLE_INTERVAL then
+								lastDebugSample = tick()
+								debugLog(
+									debugId,
+									"flight sample",
+									"pos=" .. formatVector3(currentPos),
+									"vel=" .. formatVector3(currentVelocity),
+									"horizontalDist=" .. string.format("%.2f", horizontalDist),
+									"flightTime=" .. string.format("%.2f", flightTime)
+								)
+							end
+
+							local reachedRadius = horizontalDist < CONFIG.ARRIVAL_RADIUS
+							local reachedTime = flightTime >= T
+
+							if reachedRadius or reachedTime then
 								arrived = true
+
+								local descendReason = "time"
+								if reachedRadius and reachedTime then
+									descendReason = "radius+time"
+								elseif reachedRadius then
+									descendReason = "radius"
+								end
+
+								debugLog(
+									debugId,
+									"descend fired",
+									"reason=" .. descendReason,
+									"pos=" .. formatVector3(currentPos),
+									"vel=" .. formatVector3(currentVelocity),
+									"horizontalDist=" .. string.format("%.2f", horizontalDist),
+									"flightTime=" .. string.format("%.2f", flightTime)
+								)
 
 								Remotes.CannonDropEvent:FireClient(
 									player,
@@ -136,6 +232,7 @@ local function setupReturnCannon(model)
 
 								local landed = false
 								local landingGroundY = nil
+								local landingReason = "timeout"
 								local descendStart = tick()
 
 								while not landed and hrp.Parent and tick() - descendStart < 5 do
@@ -152,12 +249,37 @@ local function setupReturnCannon(model)
 									if ray then
 										landed = true
 										landingGroundY = ray.Position.Y
+										landingReason = "raycast"
+										debugLog(
+											debugId,
+											"landing detected",
+											"reason=raycast",
+											"hit=" .. ray.Instance:GetFullName(),
+											"groundY=" .. string.format("%.2f", landingGroundY),
+											"pos=" .. formatVector3(hrp.Position)
+										)
 									elseif hrp.Position.Y <= (targetPos.Y + CONFIG.LANDING_Y_TOLERANCE) then
 										landed = true
-										-- no ground data; skip snap, fall through to existing finalization
+										landingReason = "y_threshold"
+										debugLog(
+											debugId,
+											"landing detected",
+											"reason=y_threshold",
+											"targetY=" .. string.format("%.2f", targetPos.Y),
+											"pos=" .. formatVector3(hrp.Position)
+										)
 									end
 
 									task.wait()
+								end
+
+								if not landed and hrp.Parent then
+									debugLog(
+										debugId,
+										"landing finalizing after timeout",
+										"pos=" .. formatVector3(hrp.Position),
+										"vel=" .. formatVector3(hrp.AssemblyLinearVelocity)
+									)
 								end
 
 								-- Only finalize landing if hrp survived the descent
@@ -178,10 +300,17 @@ local function setupReturnCannon(model)
 										hrp.Anchored = false
 									end
 
-									print("[ReturnCannon] Landing complete, player unanchored")
+									debugLog(
+										debugId,
+										"landing complete",
+										"landingReason=" .. landingReason,
+										"finalPos=" .. formatVector3(hrp.Position),
+										"finalVel=" .. formatVector3(hrp.AssemblyLinearVelocity)
+									)
 								end
 							end
 						else
+							debugLog(debugId, "flight loop ended because character/root is missing")
 							break
 						end
 
@@ -190,7 +319,7 @@ local function setupReturnCannon(model)
 				end)
 
 				if not taskOk then
-					warn("[ReturnCannon] flight task error for", player.Name, "—", taskErr)
+					debugWarn(debugId, "flight task error for", player.Name, "-", taskErr)
 				end
 
 				-- Always re-enable the prompt, even if the flight task errored
@@ -199,7 +328,7 @@ local function setupReturnCannon(model)
 		end)
 
 		if not handlerOk then
-			warn("[ReturnCannon] setup error for", player.Name, "—", handlerErr)
+			debugWarn(debugId, "setup error for", player.Name, "-", handlerErr)
 			-- Setup errored before task.spawn ran; restore prompt manually
 			prompt.Enabled = true
 		end

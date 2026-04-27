@@ -6,6 +6,7 @@ local Config = require(ReplicatedStorage.Config)
 local Brainrots = require(ReplicatedStorage.Brainrots)
 local Spawner = require(game.ServerScriptService.Spawner)
 local BrainrotUI = require(game.ReplicatedStorage.BrainrotUI)
+local RunService = game:GetService("RunService")
 
 local Pickup = {}
 
@@ -31,6 +32,16 @@ local modelFolders = {
 ------------------------------------------------
 -- Helper
 ------------------------------------------------
+-- [[ ADDITION START: Helper to clear hands ]] --
+local function forceUnequip(player)
+	local char = player.Character
+	if char then
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if hum then hum:UnequipTools() end
+	end
+end
+-- [[ ADDITION END ]] --
+
 local function getModelFolderName(rarity, mutation)
 	if mutation and mutation ~= "None" then
 		return mutation .. rarity .. "BrainRotModels"
@@ -166,6 +177,15 @@ local function createBrainrotTool(player, data)
 	end
 
 	tool.Equipped:Connect(function()
+		-- [[ ADDITION START: Block claimed tool logic if holding an unclaimed world item ]] --
+		local currentModel = carrying[player]
+		if currentModel and currentModel:GetAttribute("IsWorldItem") then
+			task.defer(function()
+				forceUnequip(player)
+			end)
+			return
+		end
+		-- [[ ADDITION END ]] --
 		equipped[player] = tool
 
 		local character = player.Character
@@ -179,6 +199,10 @@ local function createBrainrotTool(player, data)
 		end
 
 		local visual = template:Clone()
+		
+		-- [[ ADDITION START: Mark this model as belonging to a tool ]] --
+		visual:SetAttribute("IsToolModel", true)
+		-- [[ ADDITION END ]] --
 
 		visual:SetAttribute("Name", data.name)
 		visual:SetAttribute("Rarity", data.rarity)
@@ -254,11 +278,13 @@ local function createBrainrotTool(player, data)
 		equipped[player] = nil
 
 		local model = carrying[player]
-		if model then
+		
+		-- [[ ADDITION START: Only destroy the model if it was spawned by a tool ]] --
+		if model and model:GetAttribute("IsToolModel") then
 			model:Destroy()
+			carrying[player] = nil
 		end
-
-		carrying[player] = nil
+		-- [[ ADDITION END ]] --
 
 		stopCarryAnim(carryTracks[player])
 		carryTracks[player] = nil
@@ -313,6 +339,11 @@ function Pickup.grab(player, model)
 		print("[Pickup] grab blocked —", player.Name, "already carrying something")
 		return
 	end
+
+	-- [[ ADDITION START: Clear hands before picking up world item ]] --
+	forceUnequip(player)
+	-- [[ ADDITION END ]] --
+	
 	Remotes.GrabStateChanged:FireClient(player, true)
 	local character = player.Character
 	if not character then
@@ -320,6 +351,11 @@ function Pickup.grab(player, model)
 	end
 
 	local root = character:FindFirstChild("HumanoidRootPart")
+	
+	-- [[ ADDITION START: Mark as a physical world item ]] --
+	model:SetAttribute("IsWorldItem", true)
+	-- [[ ADDITION END ]] --
+	
 	if not root then
 		return
 	end
@@ -422,9 +458,11 @@ end
 
 function Pickup.drop(player)
 	local model = carrying[player]
-	if not model then
+	-- [[ ADDITION START: Only allow dropping if it is a world item ]] --
+	if not model or not model:GetAttribute("IsWorldItem") then
 		return
 	end
+	-- [[ ADDITION END ]] --
 
 	stopCarryAnim(carryTracks[player])
 	carryTracks[player] = nil
@@ -522,6 +560,19 @@ end
 Players.PlayerAdded:Connect(function(player)
 	player.CharacterAdded:Connect(function(character)
 		local humanoid = character:WaitForChild("Humanoid")
+		
+		-- [[ ADDITION START: Bulletproof Guard Loop ]] --
+		-- Runs 60 times a second to ensure hands stay empty while carrying world items
+		RunService.Heartbeat:Connect(function()
+			if not character.Parent then return end
+			local model = carrying[player]
+			if model and model:GetAttribute("IsWorldItem") then
+				if character:FindFirstChildOfClass("Tool") then
+					humanoid:UnequipTools()
+				end
+			end
+		end)
+		-- [[ ADDITION END ]] --
 
 		local saved = inventorySnapshot[player]
 		if saved then
