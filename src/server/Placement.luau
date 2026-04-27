@@ -216,8 +216,7 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 					money.Value -= cost
 					Remotes.UpgradeSound:FireClient(triggerPlayer)
 					local newLevel = currentLevel + 1
-					local newIncome = Brainrots.getIncomeAtLevel(baseIncome, rarity, newLevel)
-
+					local newIncome = Brainrots.getIncomeWithMutation(baseIncome, rarity, newLevel, mutation)
 					clone:SetAttribute("Level", newLevel)
 					clone:SetAttribute("IncomePerSec", newIncome)
 
@@ -337,8 +336,7 @@ function Placement.setup()
 					clone.Parent = slot
 
 					-- Compute current income at this level for billboard display
-					local currentIncome = Brainrots.getIncomeAtLevel(baseIncome, rarity, level)
-
+					local currentIncome = Brainrots.getIncomeWithMutation(baseIncome, rarity, level, mutation)
 					BrainrotUI.createBillboard(clone, {
 						name = name,
 						rarity = rarity,

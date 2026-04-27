@@ -23,12 +23,12 @@ local Config = {
 	CarryAnimationId = "rbxassetid://76257603071803",
 
 	--CannonShop
-	CannonCostScale = 1.12, -- cost multiplier per power level owned
+	CannonCostScale = 1.10, -- cost multiplier per power level owned
 	MaxCannonPower = 130, -- set to whatever cannon launch physics top-end is
 	CannonUpgradeCosts = {
-		{ amount = 1, cost = 10000 },
-		{ amount = 5, cost = 50000 },
-		{ amount = 10, cost = 100000 },
+		{amount = 1,  cost = 1500},
+		{amount = 5,  cost = 6000},
+		{amount = 10, cost = 11000},
 	},
 
 	MutationGoldChance = 0.08,
