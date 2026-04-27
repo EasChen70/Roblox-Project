@@ -1,0 +1,253 @@
+local guard = script.Parent
+local humanoid = guard:WaitForChild("Humanoid")
+local rootPart = guard:WaitForChild("HumanoidRootPart")
+local model = guard.Parent
+local zonePart = model:WaitForChild("CommonSpawnZonePart")
+local PhysicsService = game:GetService("PhysicsService")
+
+-- [[ NEW: REQUIRE PICKUP MODULE ]] --
+local ServerScriptService = game:GetService("ServerScriptService")
+local Pickup = require(ServerScriptService:WaitForChild("Pickup"))
+
+-- [[ 1. SETTINGS & VARIABLES ]] --
+local RING_RADIUS = 11        
+local KNOCKBACK_POWER = 80
+local VERTICAL_LAUNCH = 100  
+local VERTICAL_OFFSET = -16
+
+local originPos = rootPart.Position
+local currentGoal = rootPart.Position
+local state = "Moving" 
+local pauseEndTime = 0
+local hasAlerted = false
+local hitCooldowns = {} 
+
+-- Sound Setup
+local alertSound = guard:FindFirstChild("AlertSound", true) 
+
+-- [[ 2. PHYSICS & COLLISION SETUP ]] --
+humanoid.MaxHealth = math.huge
+humanoid.Health = math.huge
+rootPart:SetNetworkOwner(nil)
+
+pcall(function() PhysicsService:RegisterCollisionGroup("Guards") end)
+pcall(function() PhysicsService:RegisterCollisionGroup("Players") end)
+PhysicsService:CollisionGroupSetCollidable("Guards", "Players", false)
+
+for _, part in pairs(guard:GetDescendants()) do
+	if part:IsA("BasePart") then
+		part.Massless = true 
+		part.CollisionGroup = "Guards"
+	end
+end
+
+-- [[ 3. VISUAL RING SETUP (FIXED TO PREVENT GROWTH) ]] --
+local function createVisualRing()
+	local ringFolder = workspace:FindFirstChild("GuardRings")
+	if not ringFolder then
+		ringFolder = Instance.new("Folder")
+		ringFolder.Name = "GuardRings"
+		ringFolder.Parent = workspace
+	end
+
+	local ring = Instance.new("Part")
+	ring.Name = "GuardVisualRing_" .. guard.Name
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Size = Vector3.new(0.1, RING_RADIUS * 2, RING_RADIUS * 2) 
+	ring.Color = Color3.fromRGB(255, 0, 0)
+	ring.Material = Enum.Material.Neon
+	ring.Transparency = 0.5
+	ring.CastShadow = false
+	ring.CanCollide = false
+	ring.CanTouch = false
+	ring.CanQuery = false
+	ring.Massless = true
+	ring.Parent = ringFolder
+
+	local weld = Instance.new("Weld")
+	weld.Part0 = rootPart
+	weld.Part1 = ring
+	weld.C0 = CFrame.new(0, VERTICAL_OFFSET, 0) * CFrame.Angles(0, 0, math.rad(90))
+	weld.Parent = ring
+
+	guard.Destroying:Connect(function()
+		ring:Destroy()
+	end)
+end
+createVisualRing()
+
+-- [[ 4. ANIMATION SETUP ]] --
+local walkAnim = Instance.new("Animation")
+walkAnim.AnimationId = "rbxassetid://507767714" 
+local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
+local walkTrack = animator:LoadAnimation(walkAnim)
+walkTrack.Priority = Enum.AnimationPriority.Movement
+
+-- [[ 5. LOGIC FUNCTIONS ]] --
+local function getZoneBounds()
+	local pos = zonePart.Position
+	local size = zonePart.Size
+	return {
+		minX = pos.X - (size.X/2), maxX = pos.X + (size.X/2),
+		minZ = pos.Z - (size.Z/2), maxZ = pos.Z + (size.Z/2)
+	}
+end
+
+local MAX_DETECTION_HEIGHT = 20 -- How high up the guard looks
+
+local function isInsideZone(pos)
+	local b = getZoneBounds()
+	-- Check X and Z boundaries
+	local withinXZ = pos.X >= b.minX and pos.X <= b.maxX and pos.Z >= b.minZ and pos.Z <= b.maxZ
+
+	-- NEW: Check Y (Vertical) boundary
+	local heightDiff = math.abs(pos.Y - rootPart.Position.Y)
+	local withinHeight = heightDiff <= MAX_DETECTION_HEIGHT
+
+	return withinXZ and withinHeight
+end
+
+local function clampToZone(targetPos)
+	local b = getZoneBounds()
+	local buffer = 4
+	return Vector3.new(
+		math.clamp(targetPos.X, b.minX + buffer, b.maxX - buffer),
+		rootPart.Position.Y,
+		math.clamp(targetPos.Z, b.minZ + buffer, b.maxZ - buffer)
+	)
+end
+
+local function getClosestPlayer()
+	local closestChar = nil
+	local shortestDist = math.huge
+	for _, player in pairs(game.Players:GetPlayers()) do
+		local char = player.Character
+		if char and char:FindFirstChild("HumanoidRootPart") and not hitCooldowns[player.Name] then
+			local hum = char:FindFirstChild("Humanoid")
+			if hum and hum.Health > 0 and char ~= guard then
+				local pPos = char.HumanoidRootPart.Position
+				if isInsideZone(pPos) then
+					local dist = (rootPart.Position - pPos).Magnitude
+					if dist < shortestDist then
+						shortestDist = dist
+						closestChar = char
+					end
+				end
+			end
+		end
+	end
+	return closestChar
+end
+
+-- [[ 6. MAIN BEHAVIOR LOOP ]] --
+while task.wait(0.03) do
+	humanoid.Health = math.huge
+
+	-- Anti-Fling
+	if rootPart.AssemblyLinearVelocity.Magnitude > 40 then
+		rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+	end
+
+	-- KNOCKBACK & FALL OVER
+	for _, player in pairs(game.Players:GetPlayers()) do
+		local char = player.Character
+		if char and char:FindFirstChild("HumanoidRootPart") and char ~= guard then
+			local pRoot = char.HumanoidRootPart
+			local pHum = char:FindFirstChild("Humanoid")
+
+			-- 1. Calculate XZ (horizontal) distance
+			local distXZ = (Vector2.new(pRoot.Position.X, pRoot.Position.Z) - Vector2.new(rootPart.Position.X, rootPart.Position.Z)).Magnitude
+
+			-- 2. Calculate Y (vertical) distance
+			local distY = math.abs(pRoot.Position.Y - rootPart.Position.Y)
+			local HITBOX_HEIGHT = 16 -- Adjust this to match how high the guard's physical attack should reach
+
+			-- 3. Check both horizontal and vertical distance
+			if distXZ < RING_RADIUS and distY < HITBOX_HEIGHT and not hitCooldowns[player.Name] then
+				if pHum and pHum.Health > 0 and not pHum.PlatformStand then
+					hitCooldowns[player.Name] = true 
+
+					-- [[ NEW: DROP ITEM ON HIT ]] --
+					task.spawn(function()
+						Pickup.drop(player)
+					end)
+
+					-- Fall Over Physics
+					pHum.PlatformStand = true 
+					pHum.AutoRotate = false
+					pHum:ChangeState(Enum.HumanoidStateType.FallingDown)
+
+					-- Launch
+					pRoot.CFrame = pRoot.CFrame * CFrame.new(0, 2, 0) 
+					local pushDir = (pRoot.Position - rootPart.Position).Unit
+					pRoot.AssemblyLinearVelocity = (pushDir * KNOCKBACK_POWER) + Vector3.new(0, VERTICAL_LAUNCH, 0)
+					pRoot.AssemblyAngularVelocity = Vector3.new(math.random(-5, 5), 0, math.random(-5, 5))
+
+					-- [[ IMPROVED RECOVERY ]] --
+					task.delay(3.0, function() 
+						if char and pHum then 
+							pHum.AutoRotate = true
+							pHum.PlatformStand = false 
+							pHum:ChangeState(Enum.HumanoidStateType.GettingUp)
+
+							-- Small nudge to prevent the player from getting stuck in the floor
+							pRoot.AssemblyLinearVelocity = Vector3.new(0, 5, 0)
+						end 
+						task.wait(1.5) 
+						hitCooldowns[player.Name] = nil 
+					end)
+				end
+			end
+		end
+	end
+
+	local target = getClosestPlayer()
+
+	-- CHASE / ALERT LOGIC
+	if target then
+		state = "Moving"
+		if not hasAlerted then
+			if alertSound then
+				alertSound:Stop()
+				alertSound:Play()
+			end
+			hasAlerted = true
+		end
+		humanoid.WalkSpeed = 15
+		humanoid:MoveTo(clampToZone(target.HumanoidRootPart.Position))
+	else
+		hasAlerted = false -- Reset alert when no targets are visible
+		humanoid.WalkSpeed = 8
+		if state == "Moving" then
+			humanoid:MoveTo(currentGoal)
+			if (rootPart.Position - currentGoal).Magnitude < 4 then
+				state = "Resting"
+				pauseEndTime = tick() + math.random(2, 5)
+			end
+		elseif state == "Resting" then
+			humanoid:MoveTo(rootPart.Position) 
+			if tick() >= pauseEndTime then
+				local b = getZoneBounds()
+				currentGoal = clampToZone(Vector3.new(math.random(b.minX, b.maxX), rootPart.Position.Y, math.random(b.minZ, b.maxZ)))
+				state = "Moving"
+			end
+		end
+	end
+
+	-- Animation
+	local moveVelocity = (rootPart.AssemblyLinearVelocity * Vector3.new(1, 0, 1)).Magnitude
+	if moveVelocity > 0.5 then
+		if not walkTrack.IsPlaying then walkTrack:Play() end
+		walkTrack:AdjustSpeed(humanoid.WalkSpeed / 10)
+	else
+		if walkTrack.IsPlaying then walkTrack:Stop(0.3) end
+	end
+
+	-- Safety Boundary
+	local b = getZoneBounds()
+	local p = rootPart.Position
+	if p.X < b.minX-15 or p.X > b.maxX+15 or p.Z < b.minZ-15 or p.Z > b.maxZ+15 then
+		rootPart.CFrame = CFrame.new(originPos + Vector3.new(0, 2, 0))
+		rootPart.AssemblyLinearVelocity = Vector3.new(0,0,0)
+	end
+end
