@@ -163,7 +163,7 @@ while task.wait(0.03) do
 			local HITBOX_HEIGHT = 16 -- Adjust this to match how high the guard's physical attack should reach
 
 			-- 3. Check both horizontal and vertical distance
-			if distXZ < RING_RADIUS and distY < HITBOX_HEIGHT and not hitCooldowns[player.Name] then
+			if distXZ <= (RING_RADIUS - 1) and distY < HITBOX_HEIGHT and not hitCooldowns[player.Name] then
 				if pHum and pHum.Health > 0 and not pHum.PlatformStand then
 					hitCooldowns[player.Name] = true 
 
