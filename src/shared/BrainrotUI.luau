@@ -140,6 +140,15 @@ function BrainrotUI.updateBillboardLevel(model, newLevel, newIncome, maxLevel)
 end
 
 function BrainrotUI.createWorldBillboard(model, data)
+    if not model.PrimaryPart then
+        return nil
+    end
+
+    local existing = model.PrimaryPart:FindFirstChild("BrainrotBillboard")
+    if existing then
+        existing:Destroy()
+    end
+
     local rarity = data.rarity or "Common"
     local rarityColor = RarityColors[rarity] or RarityColors.Common
 
@@ -182,11 +191,19 @@ function BrainrotUI.createWorldBillboard(model, data)
     if despawnTime then
         local currentRemaining = despawnTime
         local localStartTime = tick()
+        local remainingConnection
 
         -- Listen for state changes from the server (e.g. Pause/Resume)
-        model:GetAttributeChangedSignal("DespawnRemaining"):Connect(function()
+        remainingConnection = model:GetAttributeChangedSignal("DespawnRemaining"):Connect(function()
             currentRemaining = model:GetAttribute("DespawnRemaining") or 0
             localStartTime = tick() -- Reset our local clock to match the new server reality
+        end)
+
+        billboard.Destroying:Connect(function()
+            if remainingConnection then
+                remainingConnection:Disconnect()
+                remainingConnection = nil
+            end
         end)
 
         task.spawn(function()

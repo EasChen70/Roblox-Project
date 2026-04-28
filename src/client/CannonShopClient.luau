@@ -14,10 +14,11 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 local CANNON_BILLBOARD_DIST = 35
 
-local RING_RADIUS = 9.5
-local RING_Y_DROP = 6.35
+local RING_RADIUS = Config.ShopRingRadius
+local RING_Y_DROP = Config.ShopRingYDrop
+local RING_FORWARD_OFFSET = Config.ShopRingForwardOffset
 local OPEN_DIST = RING_RADIUS
-local CLOSE_DIST = RING_RADIUS + 1
+local CLOSE_DIST = RING_RADIUS + Config.ShopRingClosePadding
 
 local isOpen = false
 local manuallyClosed = false
@@ -69,7 +70,7 @@ local function getClosestDist()
 	local closest = math.huge
 	for _, shop in getCannonShops() do
 		local ok, ringPos = pcall(function()
-			return (shop:GetPivot() * CFrame.new(0, -RING_Y_DROP, -8)).Position
+			return (shop:GetPivot() * CFrame.new(0, -RING_Y_DROP, RING_FORWARD_OFFSET)).Position
 		end)
 		if ok then
 			-- Flat XZ distance only, same as the visual ring
@@ -89,7 +90,7 @@ local function spawnRings()
 	task.wait(2)
 	for _, shop in getCannonShops() do
 		local shopCFrame = shop:GetPivot()
-		local ringPos = (shopCFrame * CFrame.new(0, -RING_Y_DROP, -8)).Position -- FIX: restore forward offset
+		local ringPos = (shopCFrame * CFrame.new(0, -RING_Y_DROP, RING_FORWARD_OFFSET)).Position
 
 		local ring = Instance.new("Part")
 		ring.Anchored = true
@@ -173,6 +174,26 @@ local function updateBillboardVisibility()
 				bill.Enabled = dist <= CANNON_BILLBOARD_DIST
 			end
 		end
+	end
+end
+
+local function attachPanelTexture(parent, transparency)
+	local texture = Instance.new("ImageLabel")
+	texture.Name = "PanelTexture"
+	texture.BackgroundTransparency = 1
+	texture.Image = "rbxassetid://6927295847"
+	texture.Size = UDim2.fromScale(1, 1)
+	texture.ScaleType = Enum.ScaleType.Tile
+	texture.TileSize = UDim2.fromOffset(24, 24)
+	texture.ImageTransparency = transparency
+	texture.ZIndex = parent.ZIndex
+	texture.Parent = parent
+
+	local corner = parent:FindFirstChildOfClass("UICorner")
+	if corner then
+		local textureCorner = Instance.new("UICorner")
+		textureCorner.CornerRadius = corner.CornerRadius
+		textureCorner.Parent = texture
 	end
 end
 
@@ -363,17 +384,40 @@ local function openShop()
 	mStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	mStroke.Parent = main
 
+	local header = Instance.new("Frame")
+	header.Name = "Header"
+	header.Size = UDim2.fromScale(1, 0.14)
+	header.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+	header.BorderSizePixel = 0
+	header.Parent = main
+
+	local headerCorner = Instance.new("UICorner")
+	headerCorner.CornerRadius = UDim.new(0, 15)
+	headerCorner.Parent = header
+
+	attachPanelTexture(header, 0.75)
+
+	local headerStroke = Instance.new("UIStroke")
+	headerStroke.Color = Color3.fromRGB(255, 255, 255)
+	headerStroke.Thickness = 3
+	headerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	headerStroke.Parent = header
+
 	local title = Instance.new("TextLabel")
-	title.Size = UDim2.fromScale(1, 0.12)
-	title.Position = UDim2.fromScale(0.5, 0.02)
-	title.AnchorPoint = Vector2.new(0.5, 0)
+	title.Size = UDim2.fromScale(0.7, 0.7)
+	title.Position = UDim2.fromScale(0.05, 0.17)
 	title.BackgroundTransparency = 1
-	title.Text = "💥 UPGRADE"
+	title.Text = "UPGRADES"
 	title.TextColor3 = Color3.fromRGB(255, 255, 255)
 	title.Font = Enum.Font.DenkOne
 	title.TextScaled = true
-	title.Parent = main
-	Instance.new("UIStroke", title).Thickness = 4
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Parent = header
+
+	local titleStroke = Instance.new("UIStroke")
+	titleStroke.Color = Color3.fromRGB(0, 0, 0)
+	titleStroke.Thickness = 4
+	titleStroke.Parent = title
 
 	local powerHeader = Instance.new("TextLabel")
 	powerHeader.Name = "PowerHeader"
@@ -394,19 +438,21 @@ local function openShop()
 	badgeLabel = powerHeader
 
 	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.fromScale(0.07, 0.07)
-	closeBtn.Position = UDim2.fromScale(0.97, 0.03)
+	closeBtn.Size = UDim2.fromScale(0.09, 0.65)
+	closeBtn.Position = UDim2.fromScale(0.97, 0.17)
 	closeBtn.AnchorPoint = Vector2.new(1, 0)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+	closeBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 	closeBtn.Text = "X"
-	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	closeBtn.TextColor3 = Color3.fromRGB(255, 90, 90)
 	closeBtn.Font = Enum.Font.DenkOne
 	closeBtn.TextScaled = true
-	closeBtn.Parent = main
+	closeBtn.Parent = header
 	Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
 
+	attachPanelTexture(closeBtn, 0.76)
+
 	local xStroke = Instance.new("UIStroke")
-	xStroke.Color = Color3.fromRGB(0, 0, 0)
+	xStroke.Color = Color3.fromRGB(255, 255, 255)
 	xStroke.Thickness = 3
 	xStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	xStroke.Parent = closeBtn

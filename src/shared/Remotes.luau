@@ -19,7 +19,8 @@ local remoteNames = {
 	"Rebirth",
 	"CannonDropEvent",
 	"SetFlightCollision",
-
+	"SellInventoryItem",
+	"SellAllInventoryItems",
 }
 if RunService:IsServer() then
 	-- Server creates the folder and remotes

@@ -20,7 +20,13 @@ local Config = {
 	PickupRange = 8,
 	CarryOffset = Vector3.new(0, 3, 0),
 	CarryRotation = CFrame.Angles(0, math.rad(180), 0),
-	CarryAnimationId = "rbxassetid://76257603071803",
+	CarryAnimationId = "rbxassetid://93613705528273",
+
+	-- Shop zones
+	ShopRingRadius = 9.5,
+	ShopRingYDrop = 6.35,
+	ShopRingForwardOffset = -8,
+	ShopRingClosePadding = 1,
 
 	--CannonShop
 	CannonCostScale = 1.10, -- cost multiplier per power level owned

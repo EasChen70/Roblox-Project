@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Config)
 local Remotes = require(ReplicatedStorage.Remotes)
 local CannonShopClient = require(script.Parent.CannonShopClient)
+local SellShopClient = require(script.Parent.SellShopClient)
 local player = Players.LocalPlayer
 local myBaseName = nil
 
@@ -258,3 +259,4 @@ Remotes.MaxLevelGlow.OnClientEvent:Connect(function(model)
 	end)
 end)
 CannonShopClient.start()
+SellShopClient.start()

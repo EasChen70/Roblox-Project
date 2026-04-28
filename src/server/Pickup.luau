@@ -15,6 +15,7 @@ local inventory = {} -- player → Tool[]
 local equipped = {} -- player → Tool (currently equipped, tracked server-side)
 local carryTracks = {} -- player → AnimationTrack
 local inventorySnapshot = {} -- respawn restore
+local sellLocks = {} -- tool → true while a sell request is being processed
 
 local onStashCallback = nil
 local onEquipCallback = nil
@@ -47,6 +48,31 @@ local function getModelFolderName(rarity, mutation)
 		return mutation .. rarity .. "BrainRotModels"
 	end
 	return rarity .. "BrainRotModels"
+end
+
+local function destroyWorldBillboard(model)
+	local primaryPart = model and model.PrimaryPart
+	if not primaryPart then
+		return
+	end
+
+	local billboard = primaryPart:FindFirstChild("BrainrotBillboard")
+	if billboard then
+		billboard:Destroy()
+	end
+end
+
+local function recreateWorldBillboard(model)
+	if not model or not model.PrimaryPart then
+		return
+	end
+
+	BrainrotUI.createWorldBillboard(model, {
+		name = model:GetAttribute("Name") or model.Name,
+		rarity = model:GetAttribute("Rarity") or "Common",
+		incomePerSec = model:GetAttribute("IncomePerSec") or 0,
+		mutation = model:GetAttribute("Mutation") or "None",
+	})
 end
 
 ------------------------------------------------
@@ -127,6 +153,66 @@ function Pickup.removeFromInventory(player, tool)
 			table.remove(items, i)
 			return
 		end
+	end
+end
+
+-- NEW Sell shop
+local function isInventoryToolOwnedByPlayer(player, tool)
+	if typeof(tool) ~= "Instance" or not tool:IsA("Tool") then
+		return false
+	end
+	if not tool:GetAttribute("BrainrotTool") then
+		return false
+	end
+
+	local items = inventory[player]
+	if not items then
+		return false
+	end
+
+	for _, ownedTool in ipairs(items) do
+		if ownedTool == tool then
+			return true
+		end
+	end
+
+	return false
+end
+
+local function getInventorySellValue(tool)
+	local incomePerSec = tool and tool:GetAttribute("IncomePerSec") or 0
+	return math.floor(incomePerSec * 10)
+end
+
+local function cleanupEquippedToolState(player, tool)
+	if equipped[player] ~= tool then
+		return
+	end
+
+	forceUnequip(player)
+
+	local didManualCleanup = false
+
+	if equipped[player] == tool then
+		equipped[player] = nil
+		didManualCleanup = true
+	end
+
+	local model = carrying[player]
+	if model and model:GetAttribute("IsToolModel") then
+		model:Destroy()
+		carrying[player] = nil
+		didManualCleanup = true
+	end
+
+	if carryTracks[player] then
+		stopCarryAnim(carryTracks[player])
+		carryTracks[player] = nil
+		didManualCleanup = true
+	end
+
+	if didManualCleanup and onEquipCallback then
+		onEquipCallback(player, false)
 	end
 end
 
@@ -265,6 +351,7 @@ local function createBrainrotTool(player, data)
 		})
 
 		carrying[player] = visual
+		stopCarryAnim(carryTracks[player])
 		carryTracks[player] = startCarryAnim(player)
 
 		if onEquipCallback then
@@ -330,6 +417,59 @@ function Pickup.giveItem(player, name, rarity, incomePerSec, level, mutation)
 	return true
 end
 
+-- NEW Sell shop
+function Pickup.sellInventoryTool(player, tool)
+	if not isInventoryToolOwnedByPlayer(player, tool) then
+		return 0
+	end
+	if sellLocks[tool] then
+		return 0
+	end
+
+	sellLocks[tool] = true
+
+	local sellValue = getInventorySellValue(tool)
+	if sellValue <= 0 then
+		sellLocks[tool] = nil
+		return 0
+	end
+
+	cleanupEquippedToolState(player, tool)
+	Pickup.removeFromInventory(player, tool)
+	tool:Destroy()
+	sellLocks[tool] = nil
+
+	local stats = player:FindFirstChild("leaderstats")
+	local money = stats and stats:FindFirstChild("Money")
+	if money then
+		money.Value += sellValue
+	end
+
+	return sellValue
+end
+
+-- NEW Sell shop
+function Pickup.sellAllInventoryTools(player)
+	local items = inventory[player]
+	if not items or #items == 0 then
+		return 0, 0
+	end
+
+	local toolsToSell = table.clone(items)
+	local soldCount = 0
+	local soldTotal = 0
+
+	for _, tool in ipairs(toolsToSell) do
+		local sellValue = Pickup.sellInventoryTool(player, tool)
+		if sellValue > 0 then
+			soldCount += 1
+			soldTotal += sellValue
+		end
+	end
+
+	return soldCount, soldTotal
+end
+
 ------------------------------------------------
 -- World grab (state 1: model welded directly to HRP)
 ------------------------------------------------
@@ -364,6 +504,10 @@ function Pickup.grab(player, model)
 	if prompt then
 		prompt:Destroy()
 	end
+
+	-- Hide world-only UI while the item is carried so the paused despawn timer
+	-- cannot keep visually ticking on a character-held model.
+	destroyWorldBillboard(model)
 
 	local name = model:GetAttribute("Name")
 	local rarity = model:GetAttribute("Rarity")
@@ -550,6 +694,7 @@ function Pickup.drop(player)
 	end
 
 	Spawner.startDespawnTimer(model)
+	recreateWorldBillboard(model)
 	print("[Pickup]", player.Name, "dropped", model:GetAttribute("Name"))
 end
 

@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
 local CannonShop = require(ServerScriptService.CannonShop)
+local SellShop = require(ServerScriptService.SellShop)
 local Rebirth = require(ServerScriptService.Rebirth)
 local Base = require(ServerScriptService.Base)
 local Spawner = require(ServerScriptService.Spawner)
@@ -52,4 +53,5 @@ Pickup.onEquipChanged(function(player)
 end)
 
 CannonShop.init()
+SellShop.init()
 Rebirth.init()
