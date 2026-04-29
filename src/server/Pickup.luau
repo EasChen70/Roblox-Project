@@ -43,6 +43,18 @@ local function forceUnequip(player)
 end
 -- [[ ADDITION END ]] --
 
+local function isWorldCarryModel(model)
+	return model and model:GetAttribute("IsWorldItem") == true
+end
+
+local function isToolCarryModel(model)
+	return model and model:GetAttribute("IsToolModel") == true
+end
+
+local function isCarryingWorldItem(player)
+	return isWorldCarryModel(carrying[player])
+end
+
 local function getModelFolderName(rarity, mutation)
 	if mutation and mutation ~= "None" then
 		return mutation .. rarity .. "BrainRotModels"
@@ -112,6 +124,28 @@ local function stopCarryAnim(track)
 			track:Stop()
 		end)
 	end
+end
+
+local function ensureWorldCarryAnimation(player)
+	if not isCarryingWorldItem(player) then
+		return
+	end
+
+	local currentTrack = carryTracks[player]
+	local isPlaying = false
+	if currentTrack then
+		local ok, playing = pcall(function()
+			return currentTrack.IsPlaying
+		end)
+		isPlaying = ok and playing == true
+	end
+
+	if isPlaying then
+		return
+	end
+
+	stopCarryAnim(currentTrack)
+	carryTracks[player] = startCarryAnim(player)
 end
 
 ------------------------------------------------
@@ -199,7 +233,7 @@ local function cleanupEquippedToolState(player, tool)
 	end
 
 	local model = carrying[player]
-	if model and model:GetAttribute("IsToolModel") then
+	if isToolCarryModel(model) then
 		model:Destroy()
 		carrying[player] = nil
 		didManualCleanup = true
@@ -264,10 +298,11 @@ local function createBrainrotTool(player, data)
 
 	tool.Equipped:Connect(function()
 		-- [[ ADDITION START: Block claimed tool logic if holding an unclaimed world item ]] --
-		local currentModel = carrying[player]
-		if currentModel and currentModel:GetAttribute("IsWorldItem") then
+		if isCarryingWorldItem(player) then
 			task.defer(function()
-				forceUnequip(player)
+				if isCarryingWorldItem(player) then
+					forceUnequip(player)
+				end
 			end)
 			return
 		end
@@ -362,12 +397,21 @@ local function createBrainrotTool(player, data)
 	end)
 
 	tool.Unequipped:Connect(function()
+		local wasAcceptedEquip = equipped[player] == tool
+		if not wasAcceptedEquip then
+			if isCarryingWorldItem(player) then
+				ensureWorldCarryAnimation(player)
+			end
+			print("[Pickup] ignored stale or rejected unequip cleanup for", player.Name, tool.Name)
+			return
+		end
+
 		equipped[player] = nil
 
 		local model = carrying[player]
 		
 		-- [[ ADDITION START: Only destroy the model if it was spawned by a tool ]] --
-		if model and model:GetAttribute("IsToolModel") then
+		if isToolCarryModel(model) then
 			model:Destroy()
 			carrying[player] = nil
 		end

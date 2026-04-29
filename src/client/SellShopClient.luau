@@ -17,6 +17,7 @@ local RING_Y_DROP = Config.ShopRingYDrop
 local RING_FORWARD_OFFSET = Config.ShopRingForwardOffset
 local OPEN_DIST = RING_RADIUS
 local CLOSE_DIST = RING_RADIUS + Config.ShopRingClosePadding
+local CASH_SOUND_ID = "rbxassetid://101396758527961"
 
 local isOpen = false
 local manuallyClosed = false
@@ -231,7 +232,7 @@ local function rebuildRows()
 		sellAllButton.Text = "SELL ALL"
 		sellAllButton.Active = #tools > 0 and not requestPending
 		sellAllButton.AutoButtonColor = #tools > 0 and not requestPending
-		sellAllButton.BackgroundColor3 = requestPending and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(20, 20, 20)
+		sellAllButton.BackgroundColor3 = requestPending and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(0, 170, 0)
 	end
 
 	if #tools == 0 then
@@ -259,7 +260,7 @@ local function rebuildRows()
 		local frame = Instance.new("Frame")
 		frame.Name = "SellRow"
 		frame.Size = UDim2.new(0.95, 0, 0, 96)
-		frame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+		frame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 		frame.BackgroundTransparency = 0.08
 		frame.BorderSizePixel = 0
 		frame.Parent = scrollFrame
@@ -268,7 +269,7 @@ local function rebuildRows()
 		corner.CornerRadius = UDim.new(0, 10)
 		corner.Parent = frame
 
-		attachPanelTexture(frame, 0.82)
+		attachPanelTexture(frame, 0.1)
 
 		local frameStroke = Instance.new("UIStroke")
 		frameStroke.Color = Color3.fromRGB(255, 255, 255)
@@ -305,7 +306,7 @@ local function rebuildRows()
 		btn.Size = UDim2.fromScale(0.34, 0.68)
 		btn.Position = UDim2.fromScale(0.97, 0.5)
 		btn.AnchorPoint = Vector2.new(1, 0.5)
-		btn.BackgroundColor3 = requestPending and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(20, 20, 20)
+		btn.BackgroundColor3 = requestPending and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(0, 170, 0)
 		btn.Text = "SELL (" .. Util.formatMoney(getSellValue(tool)) .. ")"
 		btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 		btn.Font = Enum.Font.DenkOne
@@ -318,7 +319,7 @@ local function rebuildRows()
 		btnCorner.CornerRadius = UDim.new(0, 8)
 		btnCorner.Parent = btn
 
-		attachPanelTexture(btn, 0.78)
+		--attachPanelTexture(btn, 0.78)
 
 		local btnStroke = Instance.new("UIStroke")
 		btnStroke.Color = Color3.fromRGB(255, 255, 255)
@@ -330,6 +331,13 @@ local function rebuildRows()
 			if requestPending then
 				return
 			end
+			
+			local sound = Instance.new("Sound")
+			sound.SoundId = CASH_SOUND_ID
+			sound.PlaybackSpeed = 1.6
+			sound.Parent = game:GetService("SoundService")
+			sound:Play()
+			sound.Ended:Connect(function() sound:Destroy() end)
 
 			requestPending = true
 			setButtonsEnabled(false)
@@ -376,6 +384,7 @@ local function openShop()
 	local screen = Instance.new("ScreenGui")
 	screen.Name = "SellShopGui"
 	screen.ResetOnSpawn = false
+	screen.DisplayOrder = 20
 	screen.Parent = playerGui
 	shopGui = screen
 
@@ -408,7 +417,7 @@ local function openShop()
 	local header = Instance.new("Frame")
 	header.Name = "Header"
 	header.Size = UDim2.fromScale(1, 0.14)
-	header.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+	header.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
 	header.BorderSizePixel = 0
 	header.Parent = main
 
@@ -485,7 +494,7 @@ local function openShop()
 	sellAll.Size = UDim2.fromScale(0.24, 0.1)
 	sellAll.Position = UDim2.fromScale(0.96, 0.18)
 	sellAll.AnchorPoint = Vector2.new(1, 0)
-	sellAll.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+	sellAll.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
 	sellAll.Text = "SELL ALL"
 	sellAll.TextColor3 = Color3.fromRGB(255, 255, 255)
 	sellAll.Font = Enum.Font.DenkOne
@@ -510,6 +519,13 @@ local function openShop()
 		if requestPending or #tools == 0 then
 			return
 		end
+		
+		local sound = Instance.new("Sound")
+		sound.SoundId = CASH_SOUND_ID
+		sound.PlaybackSpeed = 1.6
+		sound.Parent = game:GetService("SoundService")
+		sound:Play()
+		sound.Ended:Connect(function() sound:Destroy() end)
 
 		requestPending = true
 		setButtonsEnabled(false)

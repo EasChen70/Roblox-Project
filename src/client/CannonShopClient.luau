@@ -19,6 +19,7 @@ local RING_Y_DROP = Config.ShopRingYDrop
 local RING_FORWARD_OFFSET = Config.ShopRingForwardOffset
 local OPEN_DIST = RING_RADIUS
 local CLOSE_DIST = RING_RADIUS + Config.ShopRingClosePadding
+local CASH_SOUND_ID = "rbxassetid://96267401354076"
 
 local isOpen = false
 local manuallyClosed = false
@@ -27,7 +28,10 @@ local lastCheck = 0
 local CHECK_INTERVAL = 0.5
 
 local shopGui = nil
+local mainFrame = nil
 local badgeLabel = nil
+local scrollFrame = nil
+local listLayout = nil
 local rowRefs = {}
 
 -- ── Model finders ─────────────────────────────────────────────────────────────
@@ -58,6 +62,10 @@ local function getCannonModels()
 	return results
 end
 
+local function getRingPos(shop)
+	return (shop:GetPivot() * CFrame.new(0, -RING_Y_DROP, RING_FORWARD_OFFSET)).Position
+end
+
 local function getClosestDist()
 	local character = player.Character
 	if not character then
@@ -70,14 +78,13 @@ local function getClosestDist()
 	local closest = math.huge
 	for _, shop in getCannonShops() do
 		local ok, ringPos = pcall(function()
-			return (shop:GetPivot() * CFrame.new(0, -RING_Y_DROP, RING_FORWARD_OFFSET)).Position
+			return getRingPos(shop)
 		end)
 		if ok then
-			-- Flat XZ distance only, same as the visual ring
 			local flat = Vector3.new(ringPos.X, hrp.Position.Y, ringPos.Z)
-			local d = (hrp.Position - flat).Magnitude
-			if d < closest then
-				closest = d
+			local dist = (hrp.Position - flat).Magnitude
+			if dist < closest then
+				closest = dist
 			end
 		end
 	end
@@ -89,19 +96,17 @@ end
 local function spawnRings()
 	task.wait(2)
 	for _, shop in getCannonShops() do
-		local shopCFrame = shop:GetPivot()
-		local ringPos = (shopCFrame * CFrame.new(0, -RING_Y_DROP, RING_FORWARD_OFFSET)).Position
-
 		local ring = Instance.new("Part")
+		ring.Name = "CannonShopRing"
 		ring.Anchored = true
 		ring.CanCollide = false
 		ring.CanQuery = false
 		ring.CastShadow = false
 		ring.Shape = Enum.PartType.Cylinder
 		ring.Size = Vector3.new(0.05, RING_RADIUS * 2, RING_RADIUS * 2)
-		ring.CFrame = CFrame.new(ringPos) * CFrame.Angles(0, 0, math.rad(90))
+		ring.CFrame = CFrame.new(getRingPos(shop)) * CFrame.Angles(0, 0, math.rad(90))
 		ring.Material = Enum.Material.Neon
-		ring.Color = Color3.fromRGB(145, 19, 195) -- FIX: restore purple
+		ring.Color = Color3.fromRGB(145, 19, 195)
 		ring.Transparency = 0.78
 		ring.Parent = workspace
 	end
@@ -155,13 +160,9 @@ end
 
 local function updateBillboardVisibility()
 	local character = player.Character
-	if not character then
-		return
-	end
+	if not character then return end
 	local hrp = character:FindFirstChild("HumanoidRootPart")
-	if not hrp then
-		return
-	end
+	if not hrp then return end
 
 	for _, cannon in getCannonModels() do
 		local bill = cannon:FindFirstChild("PowerBillboard")
@@ -226,42 +227,20 @@ local function refreshUI()
 	end
 end
 
-local function closeShop()
-	if shopGui then
-		shopGui:Destroy()
-		shopGui = nil
-		badgeLabel = nil
-		rowRefs = {}
-	end
-	isOpen = false
-	manuallyClosed = true -- FIX: was missing, caused shop to instantly reopen after manual close
-end
-
-local function onPowerChanged()
-	if not isOpen then
-		return
-	end
-	purchasePending = false
-	refreshUI()
-	for _, row in rowRefs do
-		if row.btn then
-			row.btn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
-			row.btn.Text = costText(row.entry.cost, getCannonPower(), row.entry.amount)
-			row.btn.Active = true
-		end
-	end
-	updateCannonBillboards()
-end
-
-local function buildRow(parent, entry) -- FIX: removed dead yPos parameter
+local function buildRow(parent, entry)
 	local frame = Instance.new("Frame")
 	frame.Name = "UpgradeRow"
-	frame.Size = UDim2.new(0.95, 0, 0, 90)
-	frame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	frame.BackgroundTransparency = 0.6
+	frame.Size = UDim2.new(0.95, 0, 0, 96) -- Match standard 96 height of SellShop rows
+	frame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	frame.BackgroundTransparency = 0.1
 	frame.BorderSizePixel = 0
 	frame.Parent = parent
-	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+	
+	attachPanelTexture(frame, 0.1)
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 10)
+	corner.Parent = frame
 
 	local rowStroke = Instance.new("UIStroke")
 	rowStroke.Color = Color3.fromRGB(255, 255, 255)
@@ -289,21 +268,27 @@ local function buildRow(parent, entry) -- FIX: removed dead yPos parameter
 	lStroke.Parent = label
 
 	local btn = Instance.new("TextButton")
+	btn.Name = "BuyButton"
 	btn.Size = UDim2.fromScale(0.3, 0.6)
 	btn.Position = UDim2.fromScale(0.95, 0.5)
 	btn.AnchorPoint = Vector2.new(1, 0.5)
-	btn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
-	btn.Text = costText(entry.cost, power, entry.amount)
+	btn.BackgroundColor3 = purchasePending and Color3.fromRGB(150, 150, 150) or Color3.fromRGB(0, 170, 0)
+	btn.Text = purchasePending and "..." or costText(entry.cost, power, entry.amount)
 	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	btn.Font = Enum.Font.DenkOne
 	btn.TextScaled = true
-	btn.Active = true
+	btn.Active = not purchasePending
+	btn.AutoButtonColor = not purchasePending
 	btn.Parent = frame
-	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+
+	local btnCorner = Instance.new("UICorner")
+	btnCorner.CornerRadius = UDim.new(0, 8)
+	btnCorner.Parent = btn
 
 	local bStroke = Instance.new("UIStroke")
 	bStroke.Thickness = 3
-	bStroke.Color = Color3.fromRGB(0, 0, 0)
+	bStroke.Color = Color3.fromRGB(255, 255, 255)
+	bStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	bStroke.Parent = btn
 
 	table.insert(rowRefs, { label = label, btn = btn, entry = entry })
@@ -318,13 +303,20 @@ local function buildRow(parent, entry) -- FIX: removed dead yPos parameter
 
 		if playerMoney >= cost then
 			purchasePending = true
+
+			local sound = Instance.new("Sound")
+			sound.SoundId = CASH_SOUND_ID
+			sound.PlaybackSpeed = 1.6
+			sound.Parent = game:GetService("SoundService")
+			sound:Play()
+			sound.Ended:Connect(function() sound:Destroy() end)
+
 			btn.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
 			btn.Text = "..."
 			btn.Active = false
 
 			Remotes.UpgradeCannon:FireServer(entry.amount)
 
-			-- FIX: safety net if server never responds (disconnect, error, already max)
 			task.delay(5, function()
 				if purchasePending then
 					purchasePending = false
@@ -342,7 +334,6 @@ local function buildRow(parent, entry) -- FIX: removed dead yPos parameter
 			btn.Text = "X"
 			btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 			btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-			bStroke.Color = Color3.fromRGB(0, 0, 0)
 
 			task.delay(1, function()
 				if btn and btn.Parent then
@@ -355,39 +346,82 @@ local function buildRow(parent, entry) -- FIX: removed dead yPos parameter
 	end)
 end
 
+local function closeShop()
+	if shopGui then
+		shopGui:Destroy()
+		shopGui = nil
+		mainFrame = nil
+		badgeLabel = nil
+		scrollFrame = nil
+		listLayout = nil
+		rowRefs = {}
+	end
+	isOpen = false
+	manuallyClosed = true
+	purchasePending = false
+end
+
+local function onPowerChanged()
+	if not isOpen then
+		return
+	end
+	purchasePending = false
+	refreshUI()
+	for _, row in rowRefs do
+		if row.btn then
+			row.btn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
+			row.btn.Text = costText(row.entry.cost, getCannonPower(), row.entry.amount)
+			row.btn.Active = true
+		end
+	end
+	updateCannonBillboards()
+end
+
 local function openShop()
 	if isOpen then
 		return
 	end
+
 	isOpen = true
 	rowRefs = {}
 
 	local screen = Instance.new("ScreenGui")
 	screen.Name = "CannonShopGui"
 	screen.ResetOnSpawn = false
+	screen.DisplayOrder = 20
 	screen.Parent = playerGui
 	shopGui = screen
 
 	local main = Instance.new("Frame")
+	main.Name = "Main"
 	main.Size = UDim2.fromScale(0.65, 0.7)
 	main.Position = UDim2.fromScale(0.5, 0.5)
 	main.AnchorPoint = Vector2.new(0.5, 0.5)
 	main.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 	main.BackgroundTransparency = 0.1
 	main.Parent = screen
-	Instance.new("UICorner", main).CornerRadius = UDim.new(0, 15)
-	Instance.new("UIAspectRatioConstraint", main).AspectRatio = 1.2
+	mainFrame = main
 
-	local mStroke = Instance.new("UIStroke")
-	mStroke.Thickness = 3
-	mStroke.Color = Color3.fromRGB(255, 255, 255)
-	mStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	mStroke.Parent = main
+	local mainCorner = Instance.new("UICorner")
+	mainCorner.CornerRadius = UDim.new(0, 15)
+	mainCorner.Parent = main
+
+	attachPanelTexture(main, 0.88)
+
+	local aspect = Instance.new("UIAspectRatioConstraint")
+	aspect.AspectRatio = 1.2
+	aspect.Parent = main
+
+	local mainStroke = Instance.new("UIStroke")
+	mainStroke.Color = Color3.fromRGB(255, 255, 255)
+	mainStroke.Thickness = 3
+	mainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	mainStroke.Parent = main
 
 	local header = Instance.new("Frame")
 	header.Name = "Header"
 	header.Size = UDim2.fromScale(1, 0.14)
-	header.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+	header.BackgroundColor3 = Color3.fromRGB(145, 19, 195)
 	header.BorderSizePixel = 0
 	header.Parent = main
 
@@ -430,12 +464,12 @@ local function openShop()
 	powerHeader.TextScaled = true
 	powerHeader.TextXAlignment = Enum.TextXAlignment.Left
 	powerHeader.Parent = main
+	badgeLabel = powerHeader
 
 	local pStroke = Instance.new("UIStroke")
 	pStroke.Thickness = 2.5
 	pStroke.Color = Color3.fromRGB(0, 0, 0)
 	pStroke.Parent = powerHeader
-	badgeLabel = powerHeader
 
 	local closeBtn = Instance.new("TextButton")
 	closeBtn.Size = UDim2.fromScale(0.09, 0.65)
@@ -447,26 +481,32 @@ local function openShop()
 	closeBtn.Font = Enum.Font.DenkOne
 	closeBtn.TextScaled = true
 	closeBtn.Parent = header
-	Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
+
+	local closeCorner = Instance.new("UICorner")
+	closeCorner.CornerRadius = UDim.new(0, 8)
+	closeCorner.Parent = closeBtn
 
 	attachPanelTexture(closeBtn, 0.76)
 
-	local xStroke = Instance.new("UIStroke")
-	xStroke.Color = Color3.fromRGB(255, 255, 255)
-	xStroke.Thickness = 3
-	xStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	xStroke.Parent = closeBtn
+	local closeStroke = Instance.new("UIStroke")
+	closeStroke.Color = Color3.fromRGB(255, 255, 255)
+	closeStroke.Thickness = 3
+	closeStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	closeStroke.Parent = closeBtn
 
 	closeBtn.MouseButton1Click:Connect(closeShop)
 
 	local scroll = Instance.new("ScrollingFrame")
+	scroll.Name = "Rows"
 	scroll.Size = UDim2.fromScale(0.92, 0.66)
 	scroll.Position = UDim2.fromScale(0.5, 0.62)
 	scroll.AnchorPoint = Vector2.new(0.5, 0.5)
 	scroll.BackgroundTransparency = 1
 	scroll.BorderSizePixel = 0
+	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	scroll.ScrollBarThickness = 6
 	scroll.Parent = main
+	scrollFrame = scroll
 
 	local padding = Instance.new("UIPadding")
 	padding.PaddingTop = UDim.new(0, 10)
@@ -476,9 +516,10 @@ local function openShop()
 	layout.Padding = UDim.new(0, 10)
 	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	layout.Parent = scroll
+	listLayout = layout
 
 	for _, entry in ipairs(Config.CannonUpgradeCosts) do
-		buildRow(scroll, entry) -- FIX: removed dead 0 argument
+		buildRow(scroll, entry)
 	end
 
 	scroll.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y + 25)
@@ -502,7 +543,6 @@ function CannonShopClient.start()
 			return
 		end
 
-		-- Wait until at least one CannonModel exists
 		local attempts = 0
 		while attempts < 20 do
 			local models = getCannonModels()
@@ -523,7 +563,7 @@ function CannonShopClient.start()
 		end
 		lastCheck = now
 
-		updateBillboardVisibility() -- MOVE: runs regardless of purchasePending
+		updateBillboardVisibility()
 
 		if purchasePending then
 			return

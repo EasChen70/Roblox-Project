@@ -21,6 +21,8 @@ local remoteNames = {
 	"SetFlightCollision",
 	"SellInventoryItem",
 	"SellAllInventoryItems",
+	"TutorialStepChanged",
+	"TutorialSkipRequested",
 }
 if RunService:IsServer() then
 	-- Server creates the folder and remotes

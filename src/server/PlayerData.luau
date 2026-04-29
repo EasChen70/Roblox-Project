@@ -21,7 +21,7 @@ local PlayerData = {}
 -----CONFIG/CONSTANTS-----
 local DATA_STORE_NAME = "BrainrotCannonV1"
 
-local CURRENT_VERSION = 3 -- bumped from 2 to 3 for rebirth
+local CURRENT_VERSION = 4 -- bumped from 3 to 4 for tutorial progress
 
 local LOCK_EXPIRY = 60
 local LOCK_REFRESH = 20
@@ -43,6 +43,25 @@ local lockThreads = {}
 local pendingSave = {} -- player → true when a coalesced save is scheduled
 
 local migrations = {}
+local loadedCallbacks = {}
+
+local function countPresentEntries(values)
+	local count = 0
+	for _ in pairs(values or {}) do
+		count += 1
+	end
+	return count
+end
+
+local function cloneCompletedFlags(flags)
+	local cloned = {}
+	for stepId, completed in pairs(flags or {}) do
+		if completed then
+			cloned[stepId] = true
+		end
+	end
+	return cloned
+end
 
 -- Migration v1 -> v2: default level = 1 on all existing slots + inventory items
 migrations[2] = function(data)
@@ -65,6 +84,18 @@ migrations[3] = function(data)
 	return data
 end
 
+-- Migration v3 -> v4: tutorial progress defaults + veteran guard
+migrations[4] = function(data)
+	data.tutorialComplete = data.tutorialComplete == true
+	data.tutorialStepFlags = cloneCompletedFlags(data.tutorialStepFlags)
+
+	if (data.rebirths or 0) > 0 or (data.cannonPower or 1) > 1 or countPresentEntries(data.slots) > 0 then
+		data.tutorialComplete = true
+	end
+
+	return data
+end
+
 -----HELPERS-----
 
 local function createDefault()
@@ -76,6 +107,8 @@ local function createDefault()
 		rebirthMultiplier = Config.RebirthBaseMultiplier,
 		slots = {},
 		inventory = {},
+		tutorialComplete = false,
+		tutorialStepFlags = {},
 	}
 end
 
@@ -288,6 +321,9 @@ function PlayerData.load(player)
 		return
 	end
 
+	loadedData.tutorialComplete = loadedData.tutorialComplete == true
+	loadedData.tutorialStepFlags = cloneCompletedFlags(loadedData.tutorialStepFlags)
+
 	sessionData[player] = loadedData
 	sessionBase[player] = base
 	lastSave[player] = tick()
@@ -351,6 +387,15 @@ function PlayerData.load(player)
 			end)
 		end
 	end)
+
+	for _, callback in ipairs(loadedCallbacks) do
+		task.spawn(function()
+			local ok, err = pcall(callback, player)
+			if not ok then
+				warn("[PlayerData] onLoaded callback failed for", player.Name, err)
+			end
+		end)
+	end
 end
 
 -----HYDRATE (rebuild)-----
@@ -544,6 +589,30 @@ function PlayerData.save(player)
 	end
 
 	doSave(player, "autosave")
+end
+
+function PlayerData.onLoaded(cb)
+	table.insert(loadedCallbacks, cb)
+end
+
+function PlayerData.getTutorialState(player)
+	local data = sessionData[player]
+	if not data then
+		return nil, nil
+	end
+
+	return data.tutorialComplete == true, cloneCompletedFlags(data.tutorialStepFlags)
+end
+
+function PlayerData.setTutorialState(player, tutorialComplete, tutorialStepFlags)
+	local data = sessionData[player]
+	if not data then
+		return false
+	end
+
+	data.tutorialComplete = tutorialComplete == true
+	data.tutorialStepFlags = cloneCompletedFlags(tutorialStepFlags)
+	return true
 end
 
 -----CLEAN UP-----

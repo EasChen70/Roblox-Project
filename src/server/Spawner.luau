@@ -1,5 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
+local CollectionService = game:GetService("CollectionService")
 local Config = require(ReplicatedStorage.Config)
 local Brainrots = require(ReplicatedStorage.Brainrots)
 local BrainrotUI = require(ReplicatedStorage.BrainrotUI)
@@ -172,6 +173,7 @@ function Spawner.spawnOne(state)
     clone:SetAttribute("DespawnRemaining", despawnTime)
     clone:SetAttribute("DespawnPaused", false)
     clone.Parent = game.Workspace
+    CollectionService:AddTag(clone, "Tutorial_GrabTarget")
 
     local prompt = Instance.new("ProximityPrompt")
     prompt.ActionText = "Grab"

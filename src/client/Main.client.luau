@@ -6,6 +6,7 @@ local Config = require(ReplicatedStorage.Config)
 local Remotes = require(ReplicatedStorage.Remotes)
 local CannonShopClient = require(script.Parent.CannonShopClient)
 local SellShopClient = require(script.Parent.SellShopClient)
+local TutorialClient = require(script.Parent.TutorialClient)
 local player = Players.LocalPlayer
 local myBaseName = nil
 
@@ -260,3 +261,4 @@ Remotes.MaxLevelGlow.OnClientEvent:Connect(function(model)
 end)
 CannonShopClient.start()
 SellShopClient.start()
+TutorialClient.start()

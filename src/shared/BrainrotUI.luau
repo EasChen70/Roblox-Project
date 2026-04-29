@@ -2,6 +2,7 @@ local BrainrotUI = {}
 
 local Util = require(game.ReplicatedStorage.Util)
 local Brainrots = require(game.ReplicatedStorage.Brainrots)
+local CollectionService = game:GetService("CollectionService")
 
 local MAX_VISIBILITY_DISTANCE = 80
 
@@ -296,6 +297,7 @@ function BrainrotUI.createUpgradeBillboard(slot, data)
 	sign.Parent = model
 	model.PrimaryPart = sign
 	model.Parent = slot
+	CollectionService:AddTag(model, "Tutorial_UpgradeBillboard")
 
 	local surfaceGui = Instance.new("SurfaceGui")
 	surfaceGui.Name = "UpgradeGui"
