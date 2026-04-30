@@ -26,7 +26,6 @@ local lastCheck = 0
 local CHECK_INTERVAL = 0.5
 
 local shopGui = nil
-local mainFrame = nil
 local summaryLabel = nil
 local sellAllButton = nil
 local scrollFrame = nil
@@ -239,7 +238,7 @@ local function rebuildRows()
 		local empty = Instance.new("TextLabel")
 		empty.Name = "EmptyLabel"
 		empty.Size = UDim2.new(1, -20, 0, 120)
-		empty.Position = UDim2.new(0, 10, 0, 20)
+		empty.Position = UDim2.fromOffset(10, 20)
 		empty.BackgroundTransparency = 1
 		empty.Text = "No brainrots in inventory"
 		empty.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -337,7 +336,9 @@ local function rebuildRows()
 			sound.PlaybackSpeed = 1.6
 			sound.Parent = game:GetService("SoundService")
 			sound:Play()
-			sound.Ended:Connect(function() sound:Destroy() end)
+			sound.Ended:Connect(function()
+				sound:Destroy()
+			end)
 
 			requestPending = true
 			setButtonsEnabled(false)
@@ -361,7 +362,6 @@ local function closeShop()
 	if shopGui then
 		shopGui:Destroy()
 		shopGui = nil
-		mainFrame = nil
 		summaryLabel = nil
 		sellAllButton = nil
 		scrollFrame = nil
@@ -396,7 +396,6 @@ local function openShop()
 	main.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
 	main.BackgroundTransparency = 0.08
 	main.Parent = screen
-	mainFrame = main
 
 	local mainCorner = Instance.new("UICorner")
 	mainCorner.CornerRadius = UDim.new(0, 15)
@@ -525,7 +524,9 @@ local function openShop()
 		sound.PlaybackSpeed = 1.6
 		sound.Parent = game:GetService("SoundService")
 		sound:Play()
-		sound.Ended:Connect(function() sound:Destroy() end)
+		sound.Ended:Connect(function()
+			sound:Destroy()
+		end)
 
 		requestPending = true
 		setButtonsEnabled(false)

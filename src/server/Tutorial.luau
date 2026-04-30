@@ -472,9 +472,7 @@ function Tutorial.handlePlacementDataChanged(player)
 		refreshPlayerBindings(player)
 	end
 
-	if upgradedBrainrot then
-		markStepComplete(player, "upgradeBrainrot")
-	elseif snapshotHasUpgradedBrainrot(currentSnapshot) then
+	if upgradedBrainrot or snapshotHasUpgradedBrainrot(currentSnapshot) then
 		markStepComplete(player, "upgradeBrainrot")
 	end
 end

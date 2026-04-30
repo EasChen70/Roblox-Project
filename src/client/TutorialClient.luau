@@ -691,14 +691,15 @@ local function chooseBestGrabTarget(tag, hrp)
 				end
 
 				local isBetter = false
-				if tier < bestTier then
+				if tier < bestTier
+					or (
+						tier == bestTier
+						and (
+							pathPosition.Y < bestHeight - 1
+							or (math.abs(pathPosition.Y - bestHeight) <= 1 and horizontalDistance < bestDistance - 0.05)
+						)
+					) then
 					isBetter = true
-				elseif tier == bestTier then
-					if pathPosition.Y < bestHeight - 1 then
-						isBetter = true
-					elseif math.abs(pathPosition.Y - bestHeight) <= 1 and horizontalDistance < bestDistance - 0.05 then
-						isBetter = true
-					end
 				end
 
 				if isBetter then
@@ -910,7 +911,7 @@ local function projectPointToGround(worldPosition, preferredFloorPart, surfaceRo
 	local direction = Vector3.new(0, -PATH_RAY_DISTANCE, 0)
 
 
-	for iter = 1, 8 do
+	for _ = 1, 8 do
 		raycastParams.FilterDescendantsInstances = excluded
 		local result = Workspace:Raycast(origin, direction, raycastParams)
 		if not result then
@@ -1590,14 +1591,14 @@ function TutorialGui.ensureGui()
 	progressChip = createOutlinedLabel(rightMeta, "1/7", Enum.Font.DenkOne, Color3.fromRGB(220, 220, 220))
 	progressChip.Name = "Progress"
 	progressChip.Size = UDim2.fromOffset(24, 16)
-	progressChip.Position = UDim2.new(0, 0, 0.5, 0)
+	progressChip.Position = UDim2.fromScale(0, 0.5)
 	progressChip.AnchorPoint = Vector2.new(0, 0.5)
 	addTextSizeConstraint(progressChip, 14, 18)
 
 	skipButton = Instance.new("TextButton")
 	skipButton.Name = "SkipButton"
 	skipButton.Size = UDim2.fromOffset(30, 16)
-	skipButton.Position = UDim2.new(1, 0, 0.5, 0)
+	skipButton.Position = UDim2.fromScale(1, 0.5)
 	skipButton.AnchorPoint = Vector2.new(1, 0.5)
 	skipButton.BackgroundTransparency = 1
 	skipButton.Text = "Skip"
@@ -1634,7 +1635,7 @@ function TutorialGui.ensureGui()
 	local confirmYes = Instance.new("TextButton")
 	confirmYes.Name = "ConfirmYes"
 	confirmYes.Size = UDim2.fromOffset(24, 16)
-	confirmYes.Position = UDim2.new(0, 84, 0, 0)
+	confirmYes.Position = UDim2.fromOffset(84, 0)
 	confirmYes.AnchorPoint = Vector2.new(0, 0)
 	confirmYes.BackgroundTransparency = 1
 	confirmYes.Text = "Yes"
@@ -1652,7 +1653,7 @@ function TutorialGui.ensureGui()
 	local confirmNo = Instance.new("TextButton")
 	confirmNo.Name = "ConfirmNo"
 	confirmNo.Size = UDim2.fromOffset(18, 16)
-	confirmNo.Position = UDim2.new(0, 112, 0, 0)
+	confirmNo.Position = UDim2.fromOffset(112, 0)
 	confirmNo.AnchorPoint = Vector2.new(0, 0)
 	confirmNo.BackgroundTransparency = 1
 	confirmNo.Text = "No"

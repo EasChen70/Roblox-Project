@@ -28,10 +28,7 @@ local lastCheck = 0
 local CHECK_INTERVAL = 0.5
 
 local shopGui = nil
-local mainFrame = nil
 local badgeLabel = nil
-local scrollFrame = nil
-local listLayout = nil
 local rowRefs = {}
 
 -- ── Model finders ─────────────────────────────────────────────────────────────
@@ -309,7 +306,9 @@ local function buildRow(parent, entry)
 			sound.PlaybackSpeed = 1.6
 			sound.Parent = game:GetService("SoundService")
 			sound:Play()
-			sound.Ended:Connect(function() sound:Destroy() end)
+			sound.Ended:Connect(function()
+				sound:Destroy()
+			end)
 
 			btn.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
 			btn.Text = "..."
@@ -350,10 +349,7 @@ local function closeShop()
 	if shopGui then
 		shopGui:Destroy()
 		shopGui = nil
-		mainFrame = nil
 		badgeLabel = nil
-		scrollFrame = nil
-		listLayout = nil
 		rowRefs = {}
 	end
 	isOpen = false
@@ -400,7 +396,6 @@ local function openShop()
 	main.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 	main.BackgroundTransparency = 0.1
 	main.Parent = screen
-	mainFrame = main
 
 	local mainCorner = Instance.new("UICorner")
 	mainCorner.CornerRadius = UDim.new(0, 15)
@@ -506,7 +501,6 @@ local function openShop()
 	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	scroll.ScrollBarThickness = 6
 	scroll.Parent = main
-	scrollFrame = scroll
 
 	local padding = Instance.new("UIPadding")
 	padding.PaddingTop = UDim.new(0, 10)
@@ -516,7 +510,6 @@ local function openShop()
 	layout.Padding = UDim.new(0, 10)
 	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	layout.Parent = scroll
-	listLayout = layout
 
 	for _, entry in ipairs(Config.CannonUpgradeCosts) do
 		buildRow(scroll, entry)
