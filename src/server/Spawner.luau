@@ -27,6 +27,7 @@ end
 
 local zoneStates = {}
 local onGrabCallback = nil
+local despawnSessions = {}
 
 local function rollMutation()
     local roll = math.random()
@@ -47,6 +48,10 @@ end
 
 function Spawner.onGrab(cb)
     onGrabCallback = cb
+end
+
+local function getSessionRemaining(session)
+    return math.max(0, session.duration - (tick() - session.startedAt))
 end
 
 local function initZones()
@@ -121,28 +126,56 @@ function Spawner.startDespawnTimer(clone)
     local remaining = clone:GetAttribute("DespawnRemaining")
     if not remaining then return end
 
+    local session = {
+        duration = remaining,
+        startedAt = tick(),
+    }
+    despawnSessions[clone] = session
     clone:SetAttribute("DespawnPaused", false)
-    local startTime = tick()
 
     task.spawn(function()
-        while true do
+        while despawnSessions[clone] == session do
             task.wait(1)
-            if not clone.Parent then return end
-            if clone:GetAttribute("DespawnPaused") then
-                local elapsed = tick() - startTime
-                local finalRemaining = math.max(0, remaining - elapsed)
-                clone:SetAttribute("DespawnRemaining", finalRemaining)
-                return 
+            if despawnSessions[clone] ~= session then
+                return
             end
 
-            local elapsed = tick() - startTime
-            if elapsed >= remaining then
+            if not clone.Parent then
+                despawnSessions[clone] = nil
+                return
+            end
+
+            if clone:GetAttribute("DespawnPaused") then
+                clone:SetAttribute("DespawnRemaining", getSessionRemaining(session))
+                despawnSessions[clone] = nil
+                return
+            end
+
+            if getSessionRemaining(session) <= 0 then
+                despawnSessions[clone] = nil
                 Spawner.clearPoint(clone)
                 clone:Destroy()
                 return
             end
         end
     end)
+end
+
+function Spawner.pauseDespawnTimer(clone)
+    local session = despawnSessions[clone]
+    local remaining = clone:GetAttribute("DespawnRemaining")
+
+    if session then
+        remaining = getSessionRemaining(session)
+        despawnSessions[clone] = nil
+    end
+
+    if remaining ~= nil then
+        clone:SetAttribute("DespawnRemaining", remaining)
+    end
+    clone:SetAttribute("DespawnPaused", true)
+
+    return remaining
 end
 
 function Spawner.spawnOne(state)
@@ -162,8 +195,11 @@ function Spawner.spawnOne(state)
     local clone = template:Clone()
     clone:PivotTo(CFrame.new(point.Position + Vector3.new(0, -2, 0)))
     clone:SetAttribute("Rarity", brainrotData.rarity)
-    local mutMult = Config.MutationMultipliers[mutation] or 1.0
-    clone:SetAttribute("IncomePerSec", math.floor(brainrotData.incomePerSec * mutMult))
+    local baseIncome = brainrotData.incomePerSec
+    local incomePerSec = Brainrots.getIncomeWithMutation(baseIncome, brainrotData.rarity, 1, mutation)
+    clone:SetAttribute("BaseIncome", baseIncome)
+    clone:SetAttribute("IncomePerSec", incomePerSec)
+    clone:SetAttribute("Level", 1)
     clone:SetAttribute("Name", brainrotData.name)
     clone:SetAttribute("Mutation", mutation)
     for _, p in clone:GetDescendants() do

@@ -17,6 +17,10 @@ local carryTracks = {} -- player → AnimationTrack
 local inventorySnapshot = {} -- respawn restore
 local sellLocks = {} -- tool → true while a sell request is being processed
 
+local worldClaims = {}
+local worldClaimDestroyConnections = {}
+local carryGuardConnections = {}
+
 local onStashCallback = nil
 local onEquipCallback = nil
 
@@ -60,6 +64,72 @@ local function getModelFolderName(rarity, mutation)
 		return mutation .. rarity .. "BrainRotModels"
 	end
 	return rarity .. "BrainRotModels"
+end
+
+local function getRegistryBaseIncome(name)
+	for _, entry in ipairs(Brainrots) do
+		if entry.name == name then
+			return entry.incomePerSec
+		end
+	end
+
+	return nil
+end
+
+local function resolveBaseIncome(name, explicitBaseIncome, fallbackIncome)
+	return explicitBaseIncome or getRegistryBaseIncome(name) or fallbackIncome or 0
+end
+
+local function getInstanceBaseIncome(instance)
+	if not instance then
+		return 0
+	end
+
+	local name = instance:GetAttribute("Name") or instance.Name
+	return resolveBaseIncome(name, instance:GetAttribute("BaseIncome"), instance:GetAttribute("IncomePerSec"))
+end
+
+local function releaseWorldClaim(model)
+	local connection = worldClaimDestroyConnections[model]
+	if connection then
+		connection:Disconnect()
+		worldClaimDestroyConnections[model] = nil
+	end
+
+	worldClaims[model] = nil
+end
+
+local function disconnectCarryGuard(player)
+	local connection = carryGuardConnections[player]
+	if connection then
+		connection:Disconnect()
+		carryGuardConnections[player] = nil
+	end
+end
+
+local function claimWorldModel(player, model)
+	if typeof(model) ~= "Instance" or not model:IsA("Model") then
+		return false
+	end
+	if worldClaims[model] then
+		return false
+	end
+	if not model.PrimaryPart then
+		return false
+	end
+	if not model:IsDescendantOf(workspace) then
+		return false
+	end
+	if Players:GetPlayerFromCharacter(model.Parent) then
+		return false
+	end
+
+	worldClaims[model] = player
+	worldClaimDestroyConnections[model] = model.Destroying:Connect(function()
+		releaseWorldClaim(model)
+	end)
+
+	return true
 end
 
 local function destroyWorldBillboard(model)
@@ -214,8 +284,12 @@ local function isInventoryToolOwnedByPlayer(player, tool)
 end
 
 local function getInventorySellValue(tool)
-	local incomePerSec = tool and tool:GetAttribute("IncomePerSec") or 0
-	return math.floor(incomePerSec * 10)
+	if not tool then
+		return 0
+	end
+
+	local baseIncome = resolveBaseIncome(tool.Name, tool:GetAttribute("BaseIncome"), tool:GetAttribute("IncomePerSec"))
+	return math.floor(baseIncome * 10)
 end
 
 local function cleanupEquippedToolState(player, tool)
@@ -256,7 +330,9 @@ end
 
 local function createBrainrotTool(player, data)
 	local level = data.level or 1
-	local baseIncome = data.incomePerSec -- Stored as "base" because tools are level-aware now
+	local mutation = data.mutation or "None"
+	local baseIncome = resolveBaseIncome(data.name, data.baseIncome, data.incomePerSec)
+	local currentIncome = Brainrots.getIncomeWithMutation(baseIncome, data.rarity, level, mutation)
 
 	local tool = Instance.new("Tool")
 	tool.Name = data.name
@@ -264,10 +340,11 @@ local function createBrainrotTool(player, data)
 	tool.RequiresHandle = true
 
 	tool:SetAttribute("Rarity", data.rarity)
-	tool:SetAttribute("IncomePerSec", baseIncome) -- Base income; actual display uses level
+	tool:SetAttribute("BaseIncome", baseIncome)
+	tool:SetAttribute("IncomePerSec", currentIncome)
 	tool:SetAttribute("Level", level)
 	tool:SetAttribute("BrainrotTool", true)
-	tool:SetAttribute("Mutation", data.mutation or "None")
+	tool:SetAttribute("Mutation", mutation)
 
 	local handle = Instance.new("Part")
 	handle.Name = "Handle"
@@ -287,7 +364,7 @@ local function createBrainrotTool(player, data)
 		tool:FindFirstChild("Handle") ~= nil
 	)
 
-	local folderName = getModelFolderName(data.rarity, data.mutation or "None")
+	local folderName = getModelFolderName(data.rarity, mutation)
 	local folder = ServerStorage:FindFirstChild(folderName) or modelFolders[data.rarity]
 	local template = folder and folder:FindFirstChild(data.name)
 
@@ -329,6 +406,7 @@ local function createBrainrotTool(player, data)
 		visual:SetAttribute("Rarity", data.rarity)
 		visual:SetAttribute("Level", level)
 		visual:SetAttribute("BaseIncome", baseIncome)
+		visual:SetAttribute("IncomePerSec", currentIncome)
 
 		if not visual.PrimaryPart then
 			visual.PrimaryPart = visual:FindFirstChildWhichIsA("BasePart")
@@ -374,8 +452,6 @@ local function createBrainrotTool(player, data)
 		print("[Pickup] equip weld set for", data.name)
 
 		-- Billboard for carried visual: show level if > 1, otherwise plain
-		local mutation = data.mutation or "None"
-		local currentIncome = Brainrots.getIncomeWithMutation(baseIncome, data.rarity, level, mutation)
 		BrainrotUI.createBillboard(visual, {
 			name = data.name,
 			rarity = data.rarity,
@@ -437,7 +513,7 @@ end
 -- Give item
 ------------------------------------------------
 
-function Pickup.giveItem(player, name, rarity, incomePerSec, level, mutation)
+function Pickup.giveItem(player, name, rarity, baseIncome, level, mutation)
 	mutation = mutation or "None"
 	local items = inventory[player]
 	if items and #items >= Config.MaxInventory then
@@ -453,7 +529,7 @@ function Pickup.giveItem(player, name, rarity, incomePerSec, level, mutation)
 	createBrainrotTool(player, {
 		name = name,
 		rarity = rarity,
-		incomePerSec = incomePerSec,
+		baseIncome = baseIncome,
 		level = level or 1,
 		mutation = mutation,
 	})
@@ -524,25 +600,29 @@ function Pickup.grab(player, model)
 		return
 	end
 
-	-- [[ ADDITION START: Clear hands before picking up world item ]] --
-	forceUnequip(player)
-	-- [[ ADDITION END ]] --
-	
-	Remotes.GrabStateChanged:FireClient(player, true)
 	local character = player.Character
-	if not character then
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not (character and root) then
 		return
 	end
 
-	local root = character:FindFirstChild("HumanoidRootPart")
-	
-	-- [[ ADDITION START: Mark as a physical world item ]] --
-	model:SetAttribute("IsWorldItem", true)
-	-- [[ ADDITION END ]] --
-	
-	if not root then
+	if not claimWorldModel(player, model) then
 		return
 	end
+
+	Spawner.pauseDespawnTimer(model)
+
+	-- [[ ADDITION START: Clear hands before picking up world item ]] --
+	forceUnequip(player)
+	-- [[ ADDITION END ]] --
+
+	-- [[ ADDITION START: Mark as a physical world item ]] --
+	model:SetAttribute("IsWorldItem", true)
+	model:SetAttribute("BaseIncome", getInstanceBaseIncome(model))
+	-- [[ ADDITION END ]] --
+
+	local name = model:GetAttribute("Name")
+	local rarity = model:GetAttribute("Rarity")
 
 	local prompt = model.PrimaryPart:FindFirstChildOfClass("ProximityPrompt")
 	if prompt then
@@ -552,9 +632,6 @@ function Pickup.grab(player, model)
 	-- Hide world-only UI while the item is carried so the paused despawn timer
 	-- cannot keep visually ticking on a character-held model.
 	destroyWorldBillboard(model)
-
-	local name = model:GetAttribute("Name")
-	local rarity = model:GetAttribute("Rarity")
 
 	local partCount = 0
 	for _, p in model:GetDescendants() do
@@ -593,11 +670,11 @@ function Pickup.grab(player, model)
 
 	print("[Pickup] grab weld set, all parts unanchored —", model:GetAttribute("Name"), "parts:", partCount)
 
-	model:SetAttribute("DespawnPaused", true)
 	Spawner.clearPoint(model)
 
 	carrying[player] = model
 	carryTracks[player] = startCarryAnim(player)
+	Remotes.GrabStateChanged:FireClient(player, true)
 
 	print("[Pickup]", player.Name, "grabbed", name, "(", rarity, ")")
 end
@@ -619,11 +696,12 @@ function Pickup.stash(player)
 	local data = {
 		name = model:GetAttribute("Name"),
 		rarity = model:GetAttribute("Rarity"),
-		incomePerSec = model:GetAttribute("IncomePerSec"),
+		baseIncome = getInstanceBaseIncome(model),
 		mutation = model:GetAttribute("Mutation") or "None",
 		level = 1,
 	}
 
+	releaseWorldClaim(model)
 	model:Destroy()
 	carrying[player] = nil
 
@@ -656,6 +734,7 @@ function Pickup.drop(player)
 	carryTracks[player] = nil
 	carrying[player] = nil
 	Remotes.GrabStateChanged:FireClient(player, false)
+	releaseWorldClaim(model)
 
 	-- Destroy all welds on the model
 	for _, p in model:GetDescendants() do
@@ -752,8 +831,17 @@ Players.PlayerAdded:Connect(function(player)
 		
 		-- [[ ADDITION START: Bulletproof Guard Loop ]] --
 		-- Runs 60 times a second to ensure hands stay empty while carrying world items
-		RunService.Heartbeat:Connect(function()
-			if not character.Parent then return end
+		disconnectCarryGuard(player)
+		local guardConnection
+		guardConnection = RunService.Heartbeat:Connect(function()
+			if carryGuardConnections[player] ~= guardConnection then
+				guardConnection:Disconnect()
+				return
+			end
+			if not character.Parent then
+				disconnectCarryGuard(player)
+				return
+			end
 			local model = carrying[player]
 			if model and model:GetAttribute("IsWorldItem") then
 				if character:FindFirstChildOfClass("Tool") then
@@ -761,6 +849,7 @@ Players.PlayerAdded:Connect(function(player)
 				end
 			end
 		end)
+		carryGuardConnections[player] = guardConnection
 		-- [[ ADDITION END ]] --
 
 		local saved = inventorySnapshot[player]
@@ -785,7 +874,7 @@ Players.PlayerAdded:Connect(function(player)
 					table.insert(inventorySnapshot[player], {
 						name = tool.Name,
 						rarity = tool:GetAttribute("Rarity"),
-						incomePerSec = tool:GetAttribute("IncomePerSec"),
+						baseIncome = tool:GetAttribute("BaseIncome") or tool:GetAttribute("IncomePerSec"),
 						level = tool:GetAttribute("Level") or 1,
 						mutation = tool:GetAttribute("Mutation") or "None",
 					})
@@ -856,12 +945,21 @@ Remotes.DropBrainrot.OnServerEvent:Connect(function(player)
 end)
 
 function Pickup.cleanup(player)
-    carrying[player] = nil
-    inventory[player] = nil
-    equipped[player] = nil
-    carryTracks[player] = nil
-    inventorySnapshot[player] = nil
-    stashDebounce[player] = nil
+	local carriedModel = carrying[player]
+	if isWorldCarryModel(carriedModel) then
+		releaseWorldClaim(carriedModel)
+	end
+	if carryTracks[player] then
+		stopCarryAnim(carryTracks[player])
+	end
+	disconnectCarryGuard(player)
+
+	carrying[player] = nil
+	inventory[player] = nil
+	equipped[player] = nil
+	carryTracks[player] = nil
+	inventorySnapshot[player] = nil
+	stashDebounce[player] = nil
 end
 
 return Pickup

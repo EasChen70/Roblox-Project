@@ -1,6 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local Remotes = require(ReplicatedStorage.Remotes)
+local CannonFlight = require(ServerScriptService.CannonFlight)
 
 local DEBUG_CANNON = true
 local DEBUG_SAMPLE_INTERVAL = 0.25
@@ -64,6 +65,8 @@ local function setupReturnCannon(model)
 		return
 	end
 
+	CannonFlight.setupCannonCollision(model)
+
 	-- Disable seat auto-sit. The seat's CFrame is still used as the launch
 	-- pose anchor, but Roblox's built-in Touched-handler that snaps passing
 	-- characters onto Seat instances is now off - important because flights
@@ -90,6 +93,16 @@ local function setupReturnCannon(model)
 		end
 
 		local debugId = getFlightDebugId(player)
+		local targetPos = playerBase:GetPivot().Position
+		local flightCollisionActive = false
+
+		local function releaseFlightCollision()
+			if flightCollisionActive then
+				CannonFlight.exitCannonFlight(char)
+				flightCollisionActive = false
+			end
+		end
+
 		prompt.Enabled = false
 
 		-- Guard the synchronous pre-launch + launch portion. If any hrp/hum
@@ -98,11 +111,24 @@ local function setupReturnCannon(model)
 		local handlerOk, handlerErr = pcall(function()
 			Remotes.CannonDropEvent:FireClient(player, "Reset")
 
+			CannonFlight.enterCannonFlight(char, hum, hrp)
+			flightCollisionActive = true
+
 			hrp.Anchored = true
 			hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 			hum.PlatformStand = false
 			hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-			hrp.CFrame = seat.CFrame * CFrame.Angles(math.rad(-45), 0, 0) * CFrame.new(0, 1, 0)
+			local launchMode = "forward_style"
+			local launchClearance = math.max(1, hrp.Size.Y * 0.5) + 0.1
+			hrp.CFrame = CannonFlight.getLaunchAnchor(seat, hum, hrp, targetPos, launchMode)
+			debugLog(
+				debugId,
+				"pre-launch pose aligned",
+				"launchMode=" .. launchMode,
+				"seatPos=" .. formatVector3(seat.Position),
+				"hrpPos=" .. formatVector3(hrp.Position),
+				"launchClearance=" .. string.format("%.2f", launchClearance)
+			)
 
 			task.wait(1)
 
@@ -115,7 +141,6 @@ local function setupReturnCannon(model)
 				blastSound:Play()
 			end
 
-			local targetPos = playerBase:GetPivot().Position
 			local g = workspace.Gravity
 			local delta = targetPos - hrp.Position
 			local totalDistance = delta.Magnitude
@@ -287,12 +312,19 @@ local function setupReturnCannon(model)
 									hrp.Anchored = true
 
 									if landingGroundY then
-										hrp.CFrame = CFrame.new(hrp.Position.X, landingGroundY + 2, hrp.Position.Z)
+										hrp.CFrame = CFrame.new(
+											hrp.Position.X,
+											CannonFlight.getLandingSnapHeight(hum, hrp, landingGroundY),
+											hrp.Position.Z
+										)
 									end
 
 									hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 									hum.PlatformStand = false
 									hum:ChangeState(Enum.HumanoidStateType.Landed)
+									
+									-- ADD THIS LINE HERE:
+									Remotes.CannonDropEvent:FireClient(player, "Reset")
 
 									task.wait(0.15)
 
@@ -322,6 +354,8 @@ local function setupReturnCannon(model)
 					debugWarn(debugId, "flight task error for", player.Name, "-", taskErr)
 				end
 
+				releaseFlightCollision()
+
 				-- Always re-enable the prompt, even if the flight task errored
 				prompt.Enabled = true
 			end)
@@ -329,6 +363,7 @@ local function setupReturnCannon(model)
 
 		if not handlerOk then
 			debugWarn(debugId, "setup error for", player.Name, "-", handlerErr)
+			releaseFlightCollision()
 			-- Setup errored before task.spawn ran; restore prompt manually
 			prompt.Enabled = true
 		end

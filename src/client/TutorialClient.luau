@@ -51,6 +51,10 @@ local PATH_NODE_MAX_HEIGHT_DELTA = 16
 local PATH_TARGET_POINT_HEIGHT_WEIGHT = 8
 local ZONE_FLOOR_HEIGHT_TOLERANCE = 6
 local ZONE_FLOOR_FOOTPRINT_PADDING = 1
+local BASE_BANNER_WIDTH = 430
+local BASE_BANNER_HEIGHT = 30
+local BANNER_TOP_MARGIN = 4
+local BANNER_VIEWPORT_WIDTH_RATIO = 0.88
 
 local BaseContext = {
 	baseName = nil,
@@ -65,12 +69,16 @@ local tutorialCompleted = false
 local tutorialCompletionDismissed = false
 local tutorialCompletionDismissToken = 0
 local screenGui = nil
+local topRow = nil
+local topRowScale = nil
 local promptPill = nil
 local promptLabel = nil
 local progressChip = nil
 local skipButton = nil
 local confirmFrame = nil
 local pathFolder = nil
+local cameraViewportConnection = nil
+local currentCameraConnection = nil
 
 local activePathTarget = nil
 local activePathLogicalStepId = nil
@@ -1504,6 +1512,54 @@ local function addTextSizeConstraint(instance, minSize, maxSize)
 	constraint.Parent = instance
 end
 
+local function disconnectConnection(connection)
+	if connection then
+		connection:Disconnect()
+	end
+
+	return nil
+end
+
+-- Keep the banner pixel-authored and scale the whole unit down on smaller screens.
+function TutorialGui.updateBannerScale()
+	if not topRowScale then
+		return
+	end
+
+	local camera = Workspace.CurrentCamera
+	local viewportWidth = camera and camera.ViewportSize.X or 0
+	if viewportWidth <= 0 then
+		topRowScale.Scale = 1
+		return
+	end
+
+	topRowScale.Scale = math.min(1, (viewportWidth * BANNER_VIEWPORT_WIDTH_RATIO) / BASE_BANNER_WIDTH)
+end
+
+function TutorialGui.bindBannerScale()
+	if currentCameraConnection then
+		TutorialGui.updateBannerScale()
+		return
+	end
+
+	local function attachCamera(camera)
+		cameraViewportConnection = disconnectConnection(cameraViewportConnection)
+		if camera then
+			cameraViewportConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+				TutorialGui.updateBannerScale()
+			end)
+		end
+
+		TutorialGui.updateBannerScale()
+	end
+
+	currentCameraConnection = Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+		attachCamera(Workspace.CurrentCamera)
+	end)
+
+	attachCamera(Workspace.CurrentCamera)
+end
+
 function TutorialGui.ensureGui()
 	if screenGui then
 		return
@@ -1516,18 +1572,17 @@ function TutorialGui.ensureGui()
 	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	screenGui.Parent = playerGui
 
-	local topRow = Instance.new("Frame")
+	topRow = Instance.new("Frame")
 	topRow.Name = "TopRow"
-	topRow.Size = UDim2.new(0.5, 0, 0, 30)
-	topRow.Position = UDim2.new(0.5, 0, 0, 4)
+	topRow.Size = UDim2.fromOffset(BASE_BANNER_WIDTH, BASE_BANNER_HEIGHT)
+	topRow.Position = UDim2.new(0.5, 0, 0, BANNER_TOP_MARGIN)
 	topRow.AnchorPoint = Vector2.new(0.5, 0)
 	topRow.BackgroundTransparency = 1
 	topRow.Parent = screenGui
 
-	local topRowMax = Instance.new("UISizeConstraint")
-	topRowMax.MaxSize = Vector2.new(430, 30)
-	topRowMax.MinSize = Vector2.new(300, 30)
-	topRowMax.Parent = topRow
+	topRowScale = Instance.new("UIScale")
+	topRowScale.Parent = topRow
+	TutorialGui.bindBannerScale()
 
 	promptPill = Instance.new("Frame")
 	promptPill.Name = "PromptPill"

@@ -15,11 +15,22 @@ local onDataChangedCallback = nil
 function Placement.onDataChanged(cb)
 	onDataChangedCallback = cb
 end
+
 local function getModelFolderName(rarity, mutation)
 	if mutation and mutation ~= "None" then
 		return mutation .. rarity .. "BrainRotModels"
 	end
 	return rarity .. "BrainRotModels"
+end
+
+local function getRegistryBaseIncome(name)
+	for _, entry in ipairs(Brainrots) do
+		if entry.name == name then
+			return entry.incomePerSec
+		end
+	end
+
+	return nil
 end
 local modelFolders = {
 	Common = ServerStorage:WaitForChild("CommonBrainRotModels"),
@@ -291,7 +302,7 @@ function Placement.setup()
 
 					local name = tool.Name
 					local rarity = tool:GetAttribute("Rarity")
-					local baseIncome = tool:GetAttribute("IncomePerSec") -- Tool stores BASE income
+					local baseIncome = tool:GetAttribute("BaseIncome") or getRegistryBaseIncome(name) or tool:GetAttribute("IncomePerSec")
 					local level = tool:GetAttribute("Level") or 1
 
 					local mutation = tool:GetAttribute("Mutation") or "None"

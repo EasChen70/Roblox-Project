@@ -1,6 +1,8 @@
 --Services
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
 local ServerStorage = game:GetService("ServerStorage")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
@@ -21,7 +23,7 @@ local PlayerData = {}
 -----CONFIG/CONSTANTS-----
 local DATA_STORE_NAME = "BrainrotCannonV1"
 
-local CURRENT_VERSION = 4 -- bumped from 3 to 4 for tutorial progress
+local CURRENT_VERSION = 5 -- bumped from 4 to 5 for sparse slot key persistence
 
 local LOCK_EXPIRY = 60
 local LOCK_REFRESH = 20
@@ -34,16 +36,36 @@ local MAX_RETRIES = 3
 local RETRY_DELAYS = { 1, 2, 4 }
 
 local dataStore = DataStoreService:GetDataStore(DATA_STORE_NAME)
+local RAW_JOB_ID = game.JobId or ""
+local SESSION_OWNER_ID = RAW_JOB_ID ~= "" and RAW_JOB_ID or ("studio-" .. HttpService:GenerateGUID(false))
 
 -----RUNTIME STATE-----
 local sessionData = {}
 local sessionBase = {}
 local lastSave = {} -- tick time of last completed save (for throttle + coalesce decisions)
 local lockThreads = {}
+local saveState = {} -- player -> { active, rerunRequested, nextReason, idleEvent }
 local pendingSave = {} -- player → true when a coalesced save is scheduled
+
+local finalizingSessions = {} -- player -> { snapshot, running, completed, success, reason, event }
+local saveBlocked = {} -- player -> true after a lock-lost conflict
+
+local debugFailpoints = {
+	requestedSaveFailures = 0,
+	finalSaveFailures = 0,
+	lockMismatchResults = 0,
+}
 
 local migrations = {}
 local loadedCallbacks = {}
+
+print(
+	string.format(
+		"[PlayerData] Session owner initialized ownerId=%s rawJobId=%s",
+		SESSION_OWNER_ID,
+		RAW_JOB_ID ~= "" and RAW_JOB_ID or "<empty>"
+	)
+)
 
 local function countPresentEntries(values)
 	local count = 0
@@ -59,6 +81,33 @@ local function cloneCompletedFlags(flags)
 		if completed then
 			cloned[stepId] = true
 		end
+	end
+	return cloned
+end
+
+local function cloneSlotData(slots)
+	local cloned = {}
+	for slotIndex, slotData in pairs(slots or {}) do
+		cloned[tostring(slotIndex)] = {
+			name = slotData.name,
+			rarity = slotData.rarity,
+			level = slotData.level or 1,
+			mutation = slotData.mutation or "None",
+			accumulatedCash = slotData.accumulatedCash or 0,
+		}
+	end
+	return cloned
+end
+
+local function cloneInventoryData(items)
+	local cloned = {}
+	for _, itemData in ipairs(items or {}) do
+		table.insert(cloned, {
+			name = itemData.name,
+			rarity = itemData.rarity,
+			level = itemData.level or 1,
+			mutation = itemData.mutation or "None",
+		})
 	end
 	return cloned
 end
@@ -93,6 +142,12 @@ migrations[4] = function(data)
 		data.tutorialComplete = true
 	end
 
+	return data
+end
+
+-- Migration v4 -> v5: normalize slot keys to strings so sparse layouts persist safely
+migrations[5] = function(data)
+	data.slots = cloneSlotData(data.slots)
 	return data
 end
 
@@ -171,6 +226,65 @@ function PlayerData.countSlots(slots)
 	return count
 end
 
+local function isStudioDebugEnabled()
+	return RunService:IsStudio()
+end
+
+local function setDebugFailpoint(name, count)
+	if not isStudioDebugEnabled() or debugFailpoints[name] == nil then
+		return false
+	end
+
+	debugFailpoints[name] = math.max(0, count or 1)
+	return true
+end
+
+local function consumeDebugFailpoint(name)
+	if not isStudioDebugEnabled() then
+		return false
+	end
+
+	local remaining = debugFailpoints[name]
+	if not remaining or remaining <= 0 then
+		return false
+	end
+
+	debugFailpoints[name] = remaining - 1
+	return true
+end
+
+local function isNonEmptyString(value)
+	return type(value) == "string" and value ~= ""
+end
+
+local function getStoredLockOwnerId(data)
+	if not data then
+		return nil
+	end
+
+	if isNonEmptyString(data.lockOwnerId) then
+		return data.lockOwnerId
+	end
+
+	if isNonEmptyString(data.lockJobId) then
+		return data.lockJobId
+	end
+
+	return nil
+end
+
+local function setLockOwner(data)
+	data.lockOwnerId = SESSION_OWNER_ID
+	data.lockJobId = RAW_JOB_ID ~= "" and RAW_JOB_ID or nil
+	data.lockTimestamp = os.time()
+end
+
+local function clearLockOwner(data)
+	data.lockOwnerId = nil
+	data.lockJobId = nil
+	data.lockTimestamp = nil
+end
+
 -----READ CURRENT GAME STATE-----
 
 local function readSlots(player)
@@ -193,7 +307,7 @@ local function readSlots(player)
 
 		for _, child in slot:GetChildren() do
 			if child:IsA("Model") and child:GetAttribute("Placed") then
-				slots[i] = {
+				slots[tostring(i)] = {
 					name = child:GetAttribute("Name"),
 					rarity = child:GetAttribute("Rarity"),
 					level = child:GetAttribute("Level") or 1,
@@ -260,6 +374,245 @@ local function readLiveState(player, data)
 	print("[PlayerData] Final inventory save count:", #data.inventory)
 end
 
+local function clonePersistedData(data)
+	return {
+		version = CURRENT_VERSION,
+		money = data.money or 0,
+		rebirths = data.rebirths or 0,
+		cannonPower = data.cannonPower or 1,
+		rebirthMultiplier = data.rebirthMultiplier or Config.RebirthBaseMultiplier,
+		slots = cloneSlotData(data.slots),
+		inventory = cloneInventoryData(data.inventory),
+		tutorialComplete = data.tutorialComplete == true,
+		tutorialStepFlags = cloneCompletedFlags(data.tutorialStepFlags),
+	}
+end
+
+local function buildSaveSnapshot(player, sourceData)
+	local snapshot = clonePersistedData(sourceData)
+	readLiveState(player, snapshot)
+	snapshot.version = CURRENT_VERSION
+	return snapshot
+end
+
+local function ensureSaveState(player)
+	local state = saveState[player]
+	if state then
+		return state
+	end
+
+	state = {
+		active = false,
+		rerunRequested = false,
+		nextReason = nil,
+		idleEvent = Instance.new("BindableEvent"),
+	}
+	saveState[player] = state
+	return state
+end
+
+local function destroySaveState(player)
+	local state = saveState[player]
+	if not state then
+		return
+	end
+
+	if state.idleEvent then
+		state.idleEvent:Destroy()
+	end
+
+	saveState[player] = nil
+end
+
+local function mergeNormalSaveReason(currentReason, newReason)
+	if currentReason == "requested" or newReason == "requested" then
+		return "requested"
+	end
+
+	return currentReason or newReason
+end
+
+local function queueNormalSaveReason(player, reason)
+	local state = ensureSaveState(player)
+	state.rerunRequested = true
+	state.nextReason = mergeNormalSaveReason(state.nextReason, reason)
+	return state
+end
+
+local function signalSaveLaneIdle(state)
+	if state and state.idleEvent then
+		-- Waiters only care about the lane being fully idle, not mid-burst transitions.
+		state.idleEvent:Fire()
+	end
+end
+
+local function waitForSaveLaneIdle(player)
+	local state = saveState[player]
+
+	while state and state.active do
+		state.idleEvent.Event:Wait()
+		state = saveState[player]
+	end
+end
+
+local function cleanupTerminalSessionState(player)
+	sessionBase[player] = nil
+	lastSave[player] = nil
+	saveBlocked[player] = nil
+	pendingSave[player] = nil
+	destroySaveState(player)
+end
+
+local function createFinalizationRecord(snapshot)
+	return {
+		snapshot = snapshot,
+		running = false,
+		completed = false,
+		success = false,
+		reason = nil,
+		event = Instance.new("BindableEvent"),
+	}
+end
+
+local function destroyFinalizationRecord(player, finalizing)
+	if finalizing and finalizing.event then
+		local event = finalizing.event
+		task.defer(function()
+			event:Destroy()
+		end)
+	end
+
+	if finalizingSessions[player] == finalizing then
+		finalizingSessions[player] = nil
+	end
+end
+
+local function logSaveAttempt(player, reason, attempt, result, storedLockOwnerId, detail)
+	local message = string.format(
+		"[PlayerData] SaveAttempt userId=%s name=%s reason=%s attempt=%d result=%s writerOwnerId=%s storedLockOwnerId=%s",
+		tostring(player.UserId),
+		player.Name,
+		reason,
+		attempt,
+		result,
+		tostring(SESSION_OWNER_ID),
+		tostring(storedLockOwnerId)
+	)
+
+	if detail and detail ~= "" then
+		message = message .. " detail=" .. detail
+	end
+
+	if result == "ok" then
+		print(message)
+	else
+		warn(message)
+	end
+end
+
+local function writeSnapshot(player, snapshot, reason, options)
+	options = options or {}
+
+	local key = getKey(player)
+	local releaseLock = options.releaseLock == true
+
+	for attempt = 1, MAX_RETRIES do
+		local storedLockOwnerId = nil
+		local lockLost = false
+		local forcedLockMismatch = consumeDebugFailpoint("lockMismatchResults")
+		local forcedDatastoreFailure = false
+
+		if reason == "requested" then
+			forcedDatastoreFailure = consumeDebugFailpoint("requestedSaveFailures")
+		elseif reason == "final" then
+			forcedDatastoreFailure = consumeDebugFailpoint("finalSaveFailures")
+		end
+
+		if forcedDatastoreFailure then
+			logSaveAttempt(player, reason, attempt, "datastore_error", storedLockOwnerId, "studio_failpoint")
+			if attempt < MAX_RETRIES then
+				task.wait(RETRY_DELAYS[attempt])
+			end
+			continue
+		end
+
+		local ok, err = pcall(function()
+			dataStore:UpdateAsync(key, function(current)
+				storedLockOwnerId = getStoredLockOwnerId(current)
+
+				if forcedLockMismatch then
+					lockLost = true
+					return nil
+				end
+
+				if storedLockOwnerId ~= SESSION_OWNER_ID then
+					lockLost = true
+					return nil
+				end
+
+				local nextData = clonePersistedData(snapshot)
+				if releaseLock then
+					clearLockOwner(nextData)
+				else
+					setLockOwner(nextData)
+				end
+				return nextData
+			end)
+		end)
+
+		if lockLost then
+			logSaveAttempt(player, reason, attempt, "lock_lost", storedLockOwnerId)
+			return false, "lock_lost", storedLockOwnerId
+		end
+
+		if ok then
+			logSaveAttempt(player, reason, attempt, "ok", storedLockOwnerId)
+			return true, "ok", storedLockOwnerId
+		end
+
+		logSaveAttempt(player, reason, attempt, "datastore_error", storedLockOwnerId, tostring(err))
+		if attempt < MAX_RETRIES then
+			task.wait(RETRY_DELAYS[attempt])
+		end
+	end
+
+	return false, "datastore_error", nil
+end
+
+local function blockSessionAfterLockLost(player, reason, storedLockOwnerId)
+	if saveBlocked[player] then
+		return
+	end
+
+	saveBlocked[player] = true
+	pendingSave[player] = nil
+
+	local state = saveState[player]
+	if state then
+		state.rerunRequested = false
+		state.nextReason = nil
+	end
+
+	if lockThreads[player] then
+		task.cancel(lockThreads[player])
+		lockThreads[player] = nil
+	end
+
+	warn(
+		"[PlayerData] Lock lost for",
+		player.Name,
+		"during",
+		reason,
+		"storedLockOwnerId=" .. tostring(storedLockOwnerId)
+	)
+
+	task.defer(function()
+		if player.Parent then
+			player:Kick("Data session conflict detected - please rejoin")
+		end
+	end)
+end
+
 -----LOAD SYSTEM-----
 function PlayerData.load(player)
 	local key = getKey(player)
@@ -289,7 +642,8 @@ function PlayerData.load(player)
 
 	local success = retryAsync(function()
 		dataStore:UpdateAsync(key, function(current)
-			if current and current.lockJobId and current.lockJobId ~= game.JobId then
+			local storedLockOwnerId = getStoredLockOwnerId(current)
+			if storedLockOwnerId and storedLockOwnerId ~= SESSION_OWNER_ID then
 				if os.time() - (current.lockTimestamp or 0) < LOCK_EXPIRY then
 					wasLocked = true
 					return nil
@@ -298,8 +652,7 @@ function PlayerData.load(player)
 
 			local data = current or createDefault()
 
-			data.lockJobId = game.JobId
-			data.lockTimestamp = os.time()
+			setLockOwner(data)
 
 			loadedData = data
 			return data
@@ -324,9 +677,18 @@ function PlayerData.load(player)
 	loadedData.tutorialComplete = loadedData.tutorialComplete == true
 	loadedData.tutorialStepFlags = cloneCompletedFlags(loadedData.tutorialStepFlags)
 
+	local existingFinalizing = finalizingSessions[player]
+	if existingFinalizing then
+		destroyFinalizationRecord(player, existingFinalizing)
+	end
+
+	destroySaveState(player)
 	sessionData[player] = loadedData
 	sessionBase[player] = base
 	lastSave[player] = tick()
+	pendingSave[player] = nil
+	saveBlocked[player] = nil
+	finalizingSessions[player] = nil
 
 	leaderstats.Money.Value = loadedData.money or 0
 	leaderstats.Rebirths.Value = loadedData.rebirths or 0
@@ -378,8 +740,8 @@ function PlayerData.load(player)
 
 			pcall(function()
 				dataStore:UpdateAsync(key, function(current)
-					if current and current.lockJobId == game.JobId then
-						current.lockTimestamp = os.time()
+					if current and getStoredLockOwnerId(current) == SESSION_OWNER_ID then
+						setLockOwner(current)
 						return current
 					end
 					return nil
@@ -512,39 +874,82 @@ end
 
 -----SAVE SYSTEM-----
 
--- Internal: do the save. Bypasses throttle. Used by requestSave + autosave path.
-local function doSave(player, reason)
-	if not sessionData[player] then
-		return
+local function performSaveWrite(player, reason)
+	if saveBlocked[player] then
+		return false, "lock_lost"
 	end
 
-	local data = sessionData[player]
-	readLiveState(player, data)
+	if not sessionData[player] then
+		return true, "ok"
+	end
 
-	local key = getKey(player)
-
-	local success = retryAsync(function()
-		dataStore:UpdateAsync(key, function()
-			data.lockJobId = game.JobId
-			data.lockTimestamp = os.time()
-			data.version = CURRENT_VERSION
-			return data
-		end)
-	end)
-
-	lastSave[player] = tick()
+	local snapshot = buildSaveSnapshot(player, sessionData[player])
+	local success, saveReason, storedLockOwnerId = writeSnapshot(player, snapshot, reason, {
+		releaseLock = false,
+	})
 
 	if success then
+		lastSave[player] = tick()
 		print("[PlayerData] Saved", player.Name, "(" .. reason .. ")")
+	elseif saveReason == "lock_lost" then
+		blockSessionAfterLockLost(player, reason, storedLockOwnerId)
 	else
 		warn("[PlayerData] FAILED to save", player.Name, "(" .. reason .. ")")
+	end
+
+	return success, saveReason
+end
+
+-- The calling thread owns the normal-save loop and flips active before the first yield.
+local function runNormalSaveLoop(player, initialReason)
+	if saveBlocked[player] then
+		return false, "lock_lost"
+	end
+
+	if not sessionData[player] then
+		return true, "ok"
+	end
+
+	local state = ensureSaveState(player)
+	if state.active then
+		queueNormalSaveReason(player, initialReason)
+		return true, "queued"
+	end
+
+	state.active = true
+	state.rerunRequested = false
+	state.nextReason = nil
+
+	local currentReason = initialReason
+
+	while true do
+		local success, saveReason = performSaveWrite(player, currentReason)
+
+		if saveReason == "lock_lost" or saveBlocked[player] or not sessionData[player] then
+			state.active = false
+			state.rerunRequested = false
+			state.nextReason = nil
+			signalSaveLaneIdle(state)
+			return success, saveReason
+		end
+
+		if not state.rerunRequested then
+			state.active = false
+			state.nextReason = nil
+			signalSaveLaneIdle(state)
+			return success, saveReason
+		end
+
+		currentReason = state.nextReason or currentReason
+		state.rerunRequested = false
+		state.nextReason = nil
 	end
 end
 
 -- Event-driven save. Coalesces rapid calls within REQUEST_COALESCE_WINDOW.
 -- Use this from destructive event hooks (place, pickup, stash, upgrade, sell, collect).
 function PlayerData.requestSave(player)
-	if not sessionData[player] then
+	if saveBlocked[player] or not sessionData[player] then
 		return
 	end
 
@@ -560,11 +965,17 @@ function PlayerData.requestSave(player)
 		pendingSave[player] = nil
 
 		-- Player may have left during the coalesce window
-		if not sessionData[player] then
+		if saveBlocked[player] or not sessionData[player] then
 			return
 		end
 
-		local ok, err = pcall(doSave, player, "requested")
+		local state = ensureSaveState(player)
+		if state.active then
+			queueNormalSaveReason(player, "requested")
+			return
+		end
+
+		local ok, err = pcall(runNormalSaveLoop, player, "requested")
 		if not ok then
 			warn("[PlayerData] requestSave handler crashed for", player.Name, err)
 		end
@@ -574,8 +985,22 @@ end
 -- Throttled save. Used by autosave loop as a safety-net.
 -- Manual callers should prefer requestSave for destructive events.
 function PlayerData.save(player)
+	if saveBlocked[player] then
+		return false, "lock_lost"
+	end
+
 	if not sessionData[player] then
-		return
+		return true, "ok"
+	end
+
+	if pendingSave[player] then
+		return true, "skipped_pending"
+	end
+
+	local state = ensureSaveState(player)
+	if state.active then
+		queueNormalSaveReason(player, "autosave")
+		return true, "queued"
 	end
 
 	local now = tick()
@@ -585,10 +1010,10 @@ function PlayerData.save(player)
 			player.Name,
 			"(" .. string.format("%.1f", now - lastSave[player]) .. "s since last)"
 		)
-		return
+		return true, "ok"
 	end
 
-	doSave(player, "autosave")
+	return runNormalSaveLoop(player, "autosave")
 end
 
 function PlayerData.onLoaded(cb)
@@ -615,47 +1040,107 @@ function PlayerData.setTutorialState(player, tutorialComplete, tutorialStepFlags
 	return true
 end
 
+function PlayerData.debugFailNextRequestedSave(count)
+	return setDebugFailpoint("requestedSaveFailures", count)
+end
+
+function PlayerData.debugFailNextFinalSave(count)
+	return setDebugFailpoint("finalSaveFailures", count)
+end
+
+function PlayerData.debugForceNextLockMismatch(count)
+	return setDebugFailpoint("lockMismatchResults", count)
+end
+
 -----CLEAN UP-----
--- Atomic clearSession: captures data FIRST, clears sessionData FIRST (before yielding SetAsync),
--- so concurrent callers (PlayerRemoving + BindToClose) can't both proceed past the guard.
+-- Atomic clearSession: captures a retryable final snapshot FIRST and removes sessionData
+-- before any yield so concurrent callers (PlayerRemoving + BindToClose) share one finalization owner.
 function PlayerData.clearSession(player)
-	-- Atomic claim: if sessionData[player] is nil, another caller already handled this.
-	-- This check-and-clear MUST happen before any yield (task.wait, UpdateAsync, SetAsync).
-	local data = sessionData[player]
-	if not data then
-		return
+	local finalizing = finalizingSessions[player]
+	if not finalizing then
+		-- This claim-and-snapshot block MUST happen before any yield.
+		local data = sessionData[player]
+		if not data then
+			return true, "ok"
+		end
+
+		sessionData[player] = nil
+
+		if lockThreads[player] then
+			task.cancel(lockThreads[player])
+			lockThreads[player] = nil
+		end
+
+		pendingSave[player] = nil
+		local state = saveState[player]
+		if state then
+			state.rerunRequested = false
+			state.nextReason = nil
+		end
+
+		if not sessionBase[player] then
+			warn("[PlayerData] clearSession snapshot capture without sessionBase for", player.Name)
+		end
+
+		finalizing = createFinalizationRecord(buildSaveSnapshot(player, data))
+		finalizingSessions[player] = finalizing
 	end
-	sessionData[player] = nil
 
-	-- Cancel lock refresh thread (doesn't yield)
-	if lockThreads[player] then
-		task.cancel(lockThreads[player])
-		lockThreads[player] = nil
+	if finalizing.running then
+		finalizing.event.Event:Wait()
+		if finalizing.completed then
+			return finalizing.success, finalizing.reason
+		end
+		return false, finalizing.reason or "datastore_error"
 	end
 
-	-- Clear pending coalesce flag so any still-queued task.delay handler no-ops
-	pendingSave[player] = nil
+	if finalizing.completed then
+		return finalizing.success, finalizing.reason
+	end
 
-	-- Final save: read live state + SetAsync (this yields, but we've already claimed the slot)
-	readLiveState(player, data)
-	data.lockJobId = nil
-	data.lockTimestamp = nil
-	data.version = CURRENT_VERSION
+	finalizing.running = true
+	finalizing.success = false
+	finalizing.reason = nil
 
-	local key = getKey(player)
-	local ok, err = pcall(function()
-		dataStore:SetAsync(key, data)
-	end)
-	if not ok then
-		warn("[PlayerData] Final save FAILED for", player.Name, err)
-	else
+	waitForSaveLaneIdle(player)
+
+	local success, reason = writeSnapshot(player, finalizing.snapshot, "final", {
+		releaseLock = true,
+	})
+
+	finalizing.running = false
+
+	if success then
+		finalizing.completed = true
+		finalizing.success = true
+		finalizing.reason = "ok"
+		finalizing.event:Fire()
+		cleanupTerminalSessionState(player)
 		print("[PlayerData] Final save", player.Name)
+		print("[PlayerData] Session cleared", player.Name)
+		destroyFinalizationRecord(player, finalizing)
+		return true, "ok"
 	end
 
-	-- Final cleanup
-	sessionBase[player] = nil
-	lastSave[player] = nil
-	print("[PlayerData] Session cleared", player.Name)
+	if reason == "lock_lost" then
+		finalizing.completed = true
+		finalizing.success = false
+		finalizing.reason = "lock_lost"
+		finalizing.event:Fire()
+		cleanupTerminalSessionState(player)
+		warn("[PlayerData] Final save skipped because lock was lost for", player.Name)
+		print("[PlayerData] Session cleared", player.Name)
+		destroyFinalizationRecord(player, finalizing)
+		return false, "lock_lost"
+	end
+
+	finalizing.completed = false
+	finalizing.success = false
+	finalizing.reason = "datastore_error"
+	finalizing.event:Fire()
+	cleanupTerminalSessionState(player)
+	warn("[PlayerData] Final save FAILED for", player.Name)
+	return false, "datastore_error"
 end
 
 -----LIFECYCLE-----
@@ -664,6 +1149,15 @@ function PlayerData.setup()
 	-- PlayerRemoving is wired in Main.server.luau to control ordering with Base.releaseBase
 	game:BindToClose(function()
 		for _, player in Players:GetPlayers() do
+			pcall(PlayerData.clearSession, player)
+		end
+
+		local retryPlayers = {}
+		for player in finalizingSessions do
+			table.insert(retryPlayers, player)
+		end
+
+		for _, player in ipairs(retryPlayers) do
 			pcall(PlayerData.clearSession, player)
 		end
 	end)

@@ -3,6 +3,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Brainrots = require(ReplicatedStorage.Brainrots)
 local Util = require(ReplicatedStorage.Util)
 local Config = require(ReplicatedStorage.Config)
 local Remotes = require(ReplicatedStorage.Remotes)
@@ -103,6 +104,20 @@ local function isEligibleTool(tool)
 	return tool:IsA("Tool") and tool:GetAttribute("BrainrotTool") == true
 end
 
+local function getRegistryBaseIncome(name)
+	for _, entry in ipairs(Brainrots) do
+		if entry.name == name then
+			return entry.incomePerSec
+		end
+	end
+
+	return nil
+end
+
+local function getToolBaseIncome(tool)
+	return tool:GetAttribute("BaseIncome") or getRegistryBaseIncome(tool.Name) or tool:GetAttribute("IncomePerSec") or 0
+end
+
 local function getEligibleTools()
 	local results = {}
 	local seen = {}
@@ -128,8 +143,8 @@ local function getEligibleTools()
 	end
 
 	table.sort(results, function(a, b)
-		local aIncome = a:GetAttribute("IncomePerSec") or 0
-		local bIncome = b:GetAttribute("IncomePerSec") or 0
+		local aIncome = getToolBaseIncome(a)
+		local bIncome = getToolBaseIncome(b)
 		if aIncome ~= bIncome then
 			return aIncome > bIncome
 		end
@@ -140,7 +155,7 @@ local function getEligibleTools()
 end
 
 local function getSellValue(tool)
-	return math.floor((tool:GetAttribute("IncomePerSec") or 0) * 10)
+	return math.floor(getToolBaseIncome(tool) * 10)
 end
 
 local function disconnectCharacterConnections()

@@ -5,9 +5,9 @@ local player = game.Players.LocalPlayer
 local char = script.Parent
 local hum = char:WaitForChild("Humanoid")
 local hrp = char:WaitForChild("HumanoidRootPart")
-local playerGui = player:WaitForChild("PlayerGui")
-local cannonGui = playerGui:WaitForChild("CannonGui")
-local dropHint = cannonGui:WaitForChild("DropHint")
+local playerGui = nil
+local cannonGui = nil
+local dropHint = nil
 
 local DEBUG_CANNON = true
 local DEBUG_SAMPLE_INTERVAL = 0.25
@@ -16,6 +16,7 @@ local DEBUG_SAMPLE_DURATION = 3
 local canDrop = false
 local currentLaunchId = 0
 local isDescending = false
+local missingDropHintWarned = false
 
 local function seatPartLabel(seatPart)
 	if not seatPart then
@@ -41,6 +42,60 @@ local function logCannon(debugId, ...)
 	print(string.format("[CannonDrop][%s]", tostring(debugId)), ...)
 end
 
+local function resolveDropHint()
+	if not playerGui or not playerGui.Parent then
+		playerGui = player:FindFirstChildOfClass("PlayerGui")
+	end
+
+	if not playerGui then
+		cannonGui = nil
+		dropHint = nil
+		return nil
+	end
+
+	if not cannonGui or cannonGui.Parent ~= playerGui then
+		cannonGui = playerGui:FindFirstChild("CannonGui")
+	end
+
+	if not cannonGui then
+		dropHint = nil
+		return nil
+	end
+
+	if not dropHint or dropHint.Parent ~= cannonGui then
+		dropHint = cannonGui:FindFirstChild("DropHint")
+	end
+
+	return dropHint
+end
+
+local function warnMissingDropHint(context)
+	if missingDropHintWarned then
+		return
+	end
+
+	missingDropHintWarned = true
+	warn(
+		string.format(
+			"[CannonDrop][setup] optional DropHint UI missing context=%s hasPlayerGui=%s hasCannonGui=%s",
+			tostring(context),
+			tostring(playerGui ~= nil),
+			tostring(cannonGui ~= nil)
+		)
+	)
+end
+
+local function setDropHintVisible(visible, context)
+	local hint = resolveDropHint()
+	if hint then
+		hint.Visible = visible
+		return true
+	end
+
+	warnMissingDropHint(context)
+	return false
+end
+
 local function isFlightActive()
 	return canDrop or isDescending or hum.PlatformStand
 end
@@ -55,7 +110,7 @@ end
 
 local function forceUpright()
 	canDrop = false
-	dropHint.Visible = false
+	setDropHintVisible(false, "force_upright")
 	hum.PlatformStand = false
 	hum:ChangeState(Enum.HumanoidStateType.GettingUp)
 	hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
@@ -82,7 +137,7 @@ Remotes.CannonDropEvent.OnClientEvent:Connect(function(mode, velocity)
 		currentLaunchId += 1
 		local thisLaunch = currentLaunchId
 		logCannon(thisLaunch, "Launch applied", "isDescending=" .. tostring(isDescending))
-		dropHint.Visible = true
+		setDropHintVisible(true, "launch")
 		hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
 		hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
 
@@ -110,7 +165,7 @@ Remotes.CannonDropEvent.OnClientEvent:Connect(function(mode, velocity)
 
 		task.delay(1.5, function()
 			if canDrop and currentLaunchId == thisLaunch then
-				dropHint.Visible = false
+				setDropHintVisible(false, "launch_auto_hide")
 				logCannon(thisLaunch, "DropHint auto-hidden")
 			end
 		end)
@@ -132,7 +187,7 @@ UIS.InputBegan:Connect(function(input, processed)
 
 		canDrop = false
 		isDescending = true
-		dropHint.Visible = false
+		setDropHintVisible(false, "space_drop")
 
 		hum.PlatformStand = false
 		hum:ChangeState(Enum.HumanoidStateType.Freefall)
@@ -189,7 +244,7 @@ hum.StateChanged:Connect(function(_, newState)
 		hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
 		forceUpright()
 		freezeMomentum()
-		dropHint.Visible = false
+		setDropHintVisible(false, "landed")
 	else
 		logCannon(
 			currentLaunchId,
