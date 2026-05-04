@@ -27,6 +27,7 @@ local Config = {
 	ShopRingYDrop = 6.35,
 	ShopRingForwardOffset = -8,
 	ShopRingClosePadding = 1,
+	ShopRingMaxVerticalDistance = 16,
 
 	--CannonShop
 	CannonCostScale = 1.10, -- cost multiplier per power level owned

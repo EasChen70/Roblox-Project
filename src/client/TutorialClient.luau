@@ -1789,7 +1789,7 @@ function TutorialClient.start()
 	end)
 
 	Remotes.CannonDropEvent.OnClientEvent:Connect(function(phase)
-		if phase == "Reset" or phase == "Launch" or phase == "Descend" then
+		if phase == "Prepare" or phase == "Reset" or phase == "Launch" or phase == "Descend" then
 			PathRenderer.beginFlightSuppression()
 		end
 	end)

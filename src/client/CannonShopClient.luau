@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Util = require(ReplicatedStorage.Util)
 local Config = require(ReplicatedStorage.Config)
 local Remotes = require(ReplicatedStorage.Remotes)
+local ShopZones = require(ReplicatedStorage.ShopZones)
 
 local CannonShopClient = {}
 
@@ -15,8 +16,6 @@ local playerGui = player:WaitForChild("PlayerGui")
 local CANNON_BILLBOARD_DIST = 35
 
 local RING_RADIUS = Config.ShopRingRadius
-local RING_Y_DROP = Config.ShopRingYDrop
-local RING_FORWARD_OFFSET = Config.ShopRingForwardOffset
 local OPEN_DIST = RING_RADIUS
 local CLOSE_DIST = RING_RADIUS + Config.ShopRingClosePadding
 local CASH_SOUND_ID = "rbxassetid://96267401354076"
@@ -33,20 +32,6 @@ local rowRefs = {}
 
 -- ── Model finders ─────────────────────────────────────────────────────────────
 
-local function getCannonShops()
-	local map = workspace:FindFirstChild("Map")
-	if not map then
-		return {}
-	end
-	local results = {}
-	for _, obj in map:GetDescendants() do
-		if obj.Name == "CannonShop" and obj:IsA("Model") then
-			table.insert(results, obj)
-		end
-	end
-	return results
-end
-
 local function getCannonModels()
 	local map = workspace:FindFirstChild("Map")
 	if not map then return {} end
@@ -59,11 +44,7 @@ local function getCannonModels()
 	return results
 end
 
-local function getRingPos(shop)
-	return (shop:GetPivot() * CFrame.new(0, -RING_Y_DROP, RING_FORWARD_OFFSET)).Position
-end
-
-local function getClosestDist()
+local function getClosestDist(verticalPadding)
 	local character = player.Character
 	if not character then
 		return math.huge
@@ -72,27 +53,15 @@ local function getClosestDist()
 	if not hrp then
 		return math.huge
 	end
-	local closest = math.huge
-	for _, shop in getCannonShops() do
-		local ok, ringPos = pcall(function()
-			return getRingPos(shop)
-		end)
-		if ok then
-			local flat = Vector3.new(ringPos.X, hrp.Position.Y, ringPos.Z)
-			local dist = (hrp.Position - flat).Magnitude
-			if dist < closest then
-				closest = dist
-			end
-		end
-	end
-	return closest
+
+	return ShopZones.getClosestHorizontalDistance(hrp.Position, "CannonShop", verticalPadding)
 end
 
 -- ── Ground rings ──────────────────────────────────────────────────────────────
 
 local function spawnRings()
 	task.wait(2)
-	for _, shop in getCannonShops() do
+	for _, shop in ShopZones.getShops("CannonShop") do
 		local ring = Instance.new("Part")
 		ring.Name = "CannonShopRing"
 		ring.Anchored = true
@@ -101,7 +70,7 @@ local function spawnRings()
 		ring.CastShadow = false
 		ring.Shape = Enum.PartType.Cylinder
 		ring.Size = Vector3.new(0.05, RING_RADIUS * 2, RING_RADIUS * 2)
-		ring.CFrame = CFrame.new(getRingPos(shop)) * CFrame.Angles(0, 0, math.rad(90))
+		ring.CFrame = CFrame.new(ShopZones.getRingPosition(shop)) * CFrame.Angles(0, 0, math.rad(90))
 		ring.Material = Enum.Material.Neon
 		ring.Color = Color3.fromRGB(145, 19, 195)
 		ring.Transparency = 0.78
@@ -563,13 +532,14 @@ function CannonShopClient.start()
 		end
 
 		local dist = getClosestDist()
+		local closeDist = getClosestDist(Config.ShopRingClosePadding)
 
 		if not isOpen and not manuallyClosed and dist <= OPEN_DIST then
 			openShop()
-		elseif isOpen and dist > CLOSE_DIST then
+		elseif isOpen and closeDist > CLOSE_DIST then
 			manuallyClosed = false
 			closeShop()
-		elseif not isOpen and manuallyClosed and dist > CLOSE_DIST then
+		elseif not isOpen and manuallyClosed and closeDist > CLOSE_DIST then
 			manuallyClosed = false
 		end
 	end)

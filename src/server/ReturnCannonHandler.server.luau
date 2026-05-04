@@ -95,6 +95,7 @@ local function setupReturnCannon(model)
 		local debugId = getFlightDebugId(player)
 		local targetPos = playerBase:GetPivot().Position
 		local flightCollisionActive = false
+		local launchStarted = false
 
 		local function releaseFlightCollision()
 			if flightCollisionActive then
@@ -109,13 +110,15 @@ local function setupReturnCannon(model)
 		-- write throws (character destroyed mid-handler), prompt would
 		-- otherwise stay disabled forever.
 		local handlerOk, handlerErr = pcall(function()
-			Remotes.CannonDropEvent:FireClient(player, "Reset")
+			Remotes.CannonDropEvent:FireClient(player, "Prepare")
 
 			CannonFlight.enterCannonFlight(char, hum, hrp)
 			flightCollisionActive = true
 
 			hrp.Anchored = true
 			hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+			hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+			hum.AutoRotate = false
 			hum.PlatformStand = false
 			hum:ChangeState(Enum.HumanoidStateType.GettingUp)
 			local launchMode = "forward_style"
@@ -158,6 +161,7 @@ local function setupReturnCannon(model)
 			)
 			local launchVelocity = horizontalVel + Vector3.new(0, verticalVel, 0)
 
+			hum.AutoRotate = true
 			hrp.Anchored = false
 
 			-- Restore explicit network ownership to the launching player.
@@ -171,6 +175,7 @@ local function setupReturnCannon(model)
 			end)
 
 			hum.PlatformStand = true
+			launchStarted = true
 
 			debugLog(
 				debugId,
@@ -322,8 +327,6 @@ local function setupReturnCannon(model)
 									hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 									hum.PlatformStand = false
 									hum:ChangeState(Enum.HumanoidStateType.Landed)
-									
-									-- ADD THIS LINE HERE:
 									Remotes.CannonDropEvent:FireClient(player, "Reset")
 
 									task.wait(0.15)
@@ -363,6 +366,14 @@ local function setupReturnCannon(model)
 
 		if not handlerOk then
 			debugWarn(debugId, "setup error for", player.Name, "-", handlerErr)
+			if hum and hum.Parent then
+				hum.AutoRotate = true
+			end
+			if not launchStarted then
+				pcall(function()
+					Remotes.CannonDropEvent:FireClient(player, "Reset")
+				end)
+			end
 			releaseFlightCollision()
 			-- Setup errored before task.spawn ran; restore prompt manually
 			prompt.Enabled = true

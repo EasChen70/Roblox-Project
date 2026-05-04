@@ -7,6 +7,7 @@ local Brainrots = require(ReplicatedStorage.Brainrots)
 local Util = require(ReplicatedStorage.Util)
 local Config = require(ReplicatedStorage.Config)
 local Remotes = require(ReplicatedStorage.Remotes)
+local ShopZones = require(ReplicatedStorage.ShopZones)
 
 local SellShopClient = {}
 
@@ -14,8 +15,6 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local RING_RADIUS = Config.ShopRingRadius
-local RING_Y_DROP = Config.ShopRingYDrop
-local RING_FORWARD_OFFSET = Config.ShopRingForwardOffset
 local OPEN_DIST = RING_RADIUS
 local CLOSE_DIST = RING_RADIUS + Config.ShopRingClosePadding
 local CASH_SOUND_ID = "rbxassetid://101396758527961"
@@ -41,27 +40,7 @@ local charRemovedConn = nil
 local charChildAddedConn = nil
 local charChildRemovedConn = nil
 
-local function getSellShops()
-	local map = workspace:FindFirstChild("Map")
-	if not map then
-		return {}
-	end
-
-	local results = {}
-	for _, obj in map:GetDescendants() do
-		if obj.Name == "SellShop" and obj:IsA("Model") then
-			table.insert(results, obj)
-		end
-	end
-
-	return results
-end
-
-local function getRingPos(shop)
-	return (shop:GetPivot() * CFrame.new(0, -RING_Y_DROP, RING_FORWARD_OFFSET)).Position
-end
-
-local function getClosestDist()
+local function getClosestDist(verticalPadding)
 	local character = player.Character
 	if not character then
 		return math.huge
@@ -72,21 +51,7 @@ local function getClosestDist()
 		return math.huge
 	end
 
-	local closest = math.huge
-	for _, shop in getSellShops() do
-		local ok, ringPos = pcall(function()
-			return getRingPos(shop)
-		end)
-		if ok then
-			local flat = Vector3.new(ringPos.X, hrp.Position.Y, ringPos.Z)
-			local dist = (hrp.Position - flat).Magnitude
-			if dist < closest then
-				closest = dist
-			end
-		end
-	end
-
-	return closest
+	return ShopZones.getClosestHorizontalDistance(hrp.Position, "SellShop", verticalPadding)
 end
 
 local function formatMutation(mutation)
@@ -649,7 +614,7 @@ end
 -- NEW Sell shop
 local function spawnRings()
 	task.wait(2)
-	for _, shop in getSellShops() do
+	for _, shop in ShopZones.getShops("SellShop") do
 		local ring = Instance.new("Part")
 		ring.Name = "SellShopRing"
 		ring.Anchored = true
@@ -658,7 +623,7 @@ local function spawnRings()
 		ring.CastShadow = false
 		ring.Shape = Enum.PartType.Cylinder
 		ring.Size = Vector3.new(0.05, RING_RADIUS * 2, RING_RADIUS * 2)
-		ring.CFrame = CFrame.new(getRingPos(shop)) * CFrame.Angles(0, 0, math.rad(90))
+		ring.CFrame = CFrame.new(ShopZones.getRingPosition(shop)) * CFrame.Angles(0, 0, math.rad(90))
 		ring.Material = Enum.Material.Neon
 		ring.Color = Color3.fromRGB(255, 55, 55)
 		ring.Transparency = 0.78
@@ -678,13 +643,14 @@ function SellShopClient.start()
 		lastCheck = now
 
 		local dist = getClosestDist()
+		local closeDist = getClosestDist(Config.ShopRingClosePadding)
 
 		if not isOpen and not manuallyClosed and dist <= OPEN_DIST then
 			openShop()
-		elseif isOpen and dist > CLOSE_DIST then
+		elseif isOpen and closeDist > CLOSE_DIST then
 			manuallyClosed = false
 			closeShop()
-		elseif not isOpen and manuallyClosed and dist > CLOSE_DIST then
+		elseif not isOpen and manuallyClosed and closeDist > CLOSE_DIST then
 			manuallyClosed = false
 		end
 	end)

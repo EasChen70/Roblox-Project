@@ -370,9 +370,11 @@ prompt.Triggered:Connect(function(player)
 		end
 	end
 
+	local launchStarted = false
+
 	local handlerOk, handlerErr = pcall(function()
-		Remotes.CannonDropEvent:FireClient(player, "Reset")
-		debugLog(debugId, "reset fired to client")
+		Remotes.CannonDropEvent:FireClient(player, "Prepare")
+		debugLog(debugId, "prepare fired to client")
 
 		local isolatedPartCount = enterCannonFlight(char, hum, hrp, debugId, flightMeta)
 		flightCollisionActive = true
@@ -385,6 +387,8 @@ prompt.Triggered:Connect(function(player)
 
 		hrp.Anchored = true
 		hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+		hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+		hum.AutoRotate = false
 		hum.PlatformStand = false
 		hum:ChangeState(Enum.HumanoidStateType.GettingUp)
 
@@ -419,6 +423,7 @@ prompt.Triggered:Connect(function(player)
 			blastSound:Play()
 		end
 
+		hum.AutoRotate = true
 		hrp.Anchored = false
 
 		pcall(function()
@@ -426,6 +431,7 @@ prompt.Triggered:Connect(function(player)
 		end)
 
 		hum.PlatformStand = true
+		launchStarted = true
 		debugLog(
 			debugId,
 			"launch setup",
@@ -454,7 +460,7 @@ prompt.Triggered:Connect(function(player)
 						local currentVelocity = hrp.AssemblyLinearVelocity
 						local horizontalDist = (
 							Vector3.new(targetPos.X, 0, targetPos.Z) -
-							Vector3.new(currentPos.X, 0, currentPos.Z)
+								Vector3.new(currentPos.X, 0, currentPos.Z)
 						).Magnitude
 						local flightTime = tick() - launchTime
 						local ownerLabel = getNetworkOwnerLabel(hrp)
@@ -573,6 +579,7 @@ prompt.Triggered:Connect(function(player)
 								hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 								hum.PlatformStand = false
 								hum:ChangeState(Enum.HumanoidStateType.Landed)
+								Remotes.CannonDropEvent:FireClient(player, "Reset")
 
 								task.wait(CONFIG.LANDING_SETTLE_DELAY)
 
@@ -622,6 +629,14 @@ prompt.Triggered:Connect(function(player)
 
 	if not handlerOk then
 		debugWarn(debugId, "setup error for", player.Name, "-", handlerErr)
+		if hum and hum.Parent then
+			hum.AutoRotate = true
+		end
+		if not launchStarted then
+			pcall(function()
+				Remotes.CannonDropEvent:FireClient(player, "Reset")
+			end)
+		end
 		releaseFlightCollision("setup_error")
 		prompt.Enabled = true
 	end

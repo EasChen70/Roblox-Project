@@ -5,6 +5,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local Config = require(ReplicatedStorage.Config)
 local Remotes = require(ReplicatedStorage.Remotes)
+local ShopZones = require(ReplicatedStorage.ShopZones)
 local PlayerData = require(ServerScriptService.PlayerData)
 
 local CannonShop = {}
@@ -28,6 +29,10 @@ end
 
 function CannonShop.init()
 	Remotes.UpgradeCannon.OnServerEvent:Connect(function(player, amount)
+		if not ShopZones.isPlayerWithinRange(player, "CannonShop") then
+			return
+		end
+
 		local upgrade = findUpgrade(amount)
 		if not upgrade then
 			warn("[CannonShop] Invalid amount from", player.Name, amount)

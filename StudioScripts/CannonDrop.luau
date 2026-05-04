@@ -1,13 +1,13 @@
-local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Remotes = require(ReplicatedStorage.Remotes)
 local player = game.Players.LocalPlayer
 local char = script.Parent
 local hum = char:WaitForChild("Humanoid")
 local hrp = char:WaitForChild("HumanoidRootPart")
-local playerGui = nil
-local cannonGui = nil
-local dropHint = nil
+local playerGui = player:WaitForChild("PlayerGui")
+local cannonGui = playerGui:WaitForChild("CannonGui")
+local landButton = cannonGui:WaitForChild("LandButton")
 
 local DEBUG_CANNON = true
 local DEBUG_SAMPLE_INTERVAL = 0.25
@@ -16,7 +16,16 @@ local DEBUG_SAMPLE_DURATION = 3
 local canDrop = false
 local currentLaunchId = 0
 local isDescending = false
-local missingDropHintWarned = false
+local isPreparing = false
+local isFlightSessionActive = false
+local sessionToken = 0
+local controlsDisabled = false
+local flightSampleToken = 0
+local cachedControls = nil
+local cachedLocomotion = nil
+local prepLocomotionLocked = false
+local zeroVector = Vector3.new(0, 0, 0)
+local DROP_FORCE = -150
 
 local function seatPartLabel(seatPart)
 	if not seatPart then
@@ -42,62 +51,60 @@ local function logCannon(debugId, ...)
 	print(string.format("[CannonDrop][%s]", tostring(debugId)), ...)
 end
 
-local function resolveDropHint()
-	if not playerGui or not playerGui.Parent then
-		playerGui = player:FindFirstChildOfClass("PlayerGui")
-	end
+local function styleButton()
+	landButton.Size = UDim2.fromScale(0.15, 0.08)
+	landButton.Position = UDim2.fromScale(0.5, 0.72)
+	landButton.AnchorPoint = Vector2.new(0.5, 0.5)
+	landButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+	landButton.Text = "Land"
+	landButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	landButton.Font = Enum.Font.DenkOne
+	landButton.TextScaled = true
+	landButton.ZIndex = 10
+	landButton.Active = true
+	landButton.Selectable = true
+	landButton.Visible = false
 
-	if not playerGui then
-		cannonGui = nil
-		dropHint = nil
-		return nil
-	end
+	local texture = landButton:FindFirstChild("ButtonTexture") or Instance.new("ImageLabel")
+	texture.Name = "ButtonTexture"
+	texture.BackgroundTransparency = 1
+	texture.Image = "rbxassetid://6927295847"
+	texture.Size = UDim2.fromScale(1, 1)
+	texture.ScaleType = Enum.ScaleType.Tile
+	texture.TileSize = UDim2.new(0, 128, 0, 128)
+	texture.ImageTransparency = 0.4
+	texture.ZIndex = 1
+	texture.Active = false
+	texture.Parent = landButton
 
-	if not cannonGui or cannonGui.Parent ~= playerGui then
-		cannonGui = playerGui:FindFirstChild("CannonGui")
-	end
+	local corner = landButton:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 10)
+	corner.Parent = landButton
 
-	if not cannonGui then
-		dropHint = nil
-		return nil
-	end
+	local aspect = landButton:FindFirstChildOfClass("UIAspectRatioConstraint") or Instance.new("UIAspectRatioConstraint")
+	aspect.AspectRatio = 2.66
+	aspect.Parent = landButton
 
-	if not dropHint or dropHint.Parent ~= cannonGui then
-		dropHint = cannonGui:FindFirstChild("DropHint")
-	end
+	local buttonStroke = landButton:FindFirstChild("ButtonStroke") or Instance.new("UIStroke")
+	buttonStroke.Name = "ButtonStroke"
+	buttonStroke.Color = Color3.fromRGB(255, 255, 255)
+	buttonStroke.Thickness = 2
+	buttonStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	buttonStroke.Parent = landButton
 
-	return dropHint
+	local textStroke = landButton:FindFirstChild("TextStroke") or Instance.new("UIStroke")
+	textStroke.Name = "TextStroke"
+	textStroke.Color = Color3.fromRGB(0, 0, 0)
+	textStroke.Thickness = 2
+	textStroke.Parent = landButton
 end
 
-local function warnMissingDropHint(context)
-	if missingDropHintWarned then
-		return
-	end
-
-	missingDropHintWarned = true
-	warn(
-		string.format(
-			"[CannonDrop][setup] optional DropHint UI missing context=%s hasPlayerGui=%s hasCannonGui=%s",
-			tostring(context),
-			tostring(playerGui ~= nil),
-			tostring(cannonGui ~= nil)
-		)
-	)
+local function setLandButtonVisible(visible)
+	landButton.Visible = visible
 end
 
-local function setDropHintVisible(visible, context)
-	local hint = resolveDropHint()
-	if hint then
-		hint.Visible = visible
-		return true
-	end
-
-	warnMissingDropHint(context)
-	return false
-end
-
-local function isFlightActive()
-	return canDrop or isDescending or hum.PlatformStand
+local function isCannonSessionActive()
+	return isPreparing or isFlightSessionActive or canDrop or isDescending or hum.PlatformStand
 end
 
 local function setCharacterCanCollide(state)
@@ -108,36 +115,241 @@ local function setCharacterCanCollide(state)
 	end
 end
 
+local function getLocalControls()
+	if cachedControls then
+		return cachedControls
+	end
+
+	local playerScripts = player:FindFirstChildOfClass("PlayerScripts")
+	if not playerScripts then
+		return nil
+	end
+
+	local playerModule = playerScripts:FindFirstChild("PlayerModule")
+	if not playerModule then
+		return nil
+	end
+
+	local ok, moduleOrErr = pcall(require, playerModule)
+	if not ok or type(moduleOrErr) ~= "table" or type(moduleOrErr.GetControls) ~= "function" then
+		return nil
+	end
+
+	local controlsOk, controls = pcall(function()
+		return moduleOrErr:GetControls()
+	end)
+	if not controlsOk then
+		return nil
+	end
+
+	cachedControls = controls
+	return cachedControls
+end
+
+local function disableLocalControls()
+	if controlsDisabled then
+		return
+	end
+
+	local controls = getLocalControls()
+	if controls and type(controls.Disable) == "function" then
+		pcall(function()
+			controls:Disable()
+		end)
+		controlsDisabled = true
+	end
+end
+
+local function enableLocalControls()
+	if not controlsDisabled then
+		return
+	end
+
+	local controls = getLocalControls()
+	if controls and type(controls.Enable) == "function" then
+		pcall(function()
+			controls:Enable()
+		end)
+	end
+
+	controlsDisabled = false
+end
+
+local function clearLocalMovementIntent()
+	hum.Jump = false
+	pcall(function()
+		hum:Move(zeroVector, true)
+	end)
+end
+
+local function applyPrepLocomotionLock()
+	if not prepLocomotionLocked then
+		cachedLocomotion = {
+			walkSpeed = hum.WalkSpeed,
+			jumpPower = hum.JumpPower,
+			jumpHeight = hum.JumpHeight,
+		}
+		prepLocomotionLocked = true
+	end
+
+	hum.WalkSpeed = 0
+	if hum.UseJumpPower then
+		hum.JumpPower = 0
+	else
+		hum.JumpHeight = 0
+	end
+end
+
+local function restorePrepLocomotion()
+	if not prepLocomotionLocked then
+		return
+	end
+
+	if cachedLocomotion then
+		hum.WalkSpeed = cachedLocomotion.walkSpeed
+		hum.JumpPower = cachedLocomotion.jumpPower
+		hum.JumpHeight = cachedLocomotion.jumpHeight
+	end
+
+	cachedLocomotion = nil
+	prepLocomotionLocked = false
+end
+
+local function startPrepareLockLoop(activeSessionToken)
+	task.spawn(function()
+		while isPreparing and sessionToken == activeSessionToken do
+			applyPrepLocomotionLock()
+			clearLocalMovementIntent()
+			hrp.AssemblyAngularVelocity = zeroVector
+			RunService.RenderStepped:Wait()
+		end
+	end)
+end
+
 local function forceUpright()
-	canDrop = false
-	setDropHintVisible(false, "force_upright")
 	hum.PlatformStand = false
+	hum.Jump = false
 	hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-	hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+	hrp.AssemblyAngularVelocity = zeroVector
 end
 
 local function freezeMomentum()
-	hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+	hrp.AssemblyLinearVelocity = zeroVector
 	hum:ChangeState(Enum.HumanoidStateType.Landed)
 end
 
+local function beginCannonSession()
+	sessionToken += 1
+	flightSampleToken += 1
+	isPreparing = true
+	isFlightSessionActive = true
+	canDrop = false
+	isDescending = false
+	return sessionToken
+end
+
+local function clearCannonSessionState()
+	sessionToken += 1
+	flightSampleToken += 1
+	isPreparing = false
+	isFlightSessionActive = false
+	canDrop = false
+	isDescending = false
+end
+
+local function cleanupCannonSession(context, shouldFreezeMomentum)
+	clearCannonSessionState()
+	restorePrepLocomotion()
+	enableLocalControls()
+	hum.AutoRotate = true
+	setCharacterCanCollide(true)
+	hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+	hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+	setLandButtonVisible(false)
+	forceUpright()
+	if shouldFreezeMomentum then
+		freezeMomentum()
+	end
+end
+
+local function triggerLanding(reason)
+	if not canDrop then
+		return
+	end
+
+	logCannon(currentLaunchId, "Landing triggered", "reason=" .. tostring(reason))
+
+	canDrop = false
+	isDescending = true
+	setLandButtonVisible(false)
+
+	hum.PlatformStand = false
+	hum:ChangeState(Enum.HumanoidStateType.Freefall)
+	setCharacterCanCollide(true)
+
+	hrp.AssemblyLinearVelocity = Vector3.new(0, DROP_FORCE, 0)
+	hrp.AssemblyAngularVelocity = zeroVector
+
+	logCannon(currentLaunchId, "Landing applied", "dropForce=" .. tostring(DROP_FORCE))
+end
+
+styleButton()
+
+landButton.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		triggerLanding("button_input")
+	end
+end)
+
+landButton.MouseButton1Click:Connect(function()
+	triggerLanding("button_click")
+end)
+
 Remotes.CannonDropEvent.OnClientEvent:Connect(function(mode, velocity)
-	if mode == "Reset" then
-		logCannon(currentLaunchId, "Reset received", "isDescending=" .. tostring(isDescending), "canDrop=" .. tostring(canDrop))
-		isDescending = false
+	if mode == "Prepare" then
+		local newSessionToken = beginCannonSession()
+		logCannon(
+			currentLaunchId,
+			"Prepare received",
+			"sessionToken=" .. tostring(newSessionToken),
+			"isDescending=" .. tostring(isDescending),
+			"canDrop=" .. tostring(canDrop)
+		)
+		disableLocalControls()
+		applyPrepLocomotionLock()
+		clearLocalMovementIntent()
+		setLandButtonVisible(false)
+		hum.AutoRotate = false
+		hrp.AssemblyAngularVelocity = zeroVector
 		forceUpright()
+		startPrepareLockLoop(newSessionToken)
+		logCannon(currentLaunchId, "Prepare complete", "sessionToken=" .. tostring(newSessionToken))
+	elseif mode == "Reset" then
+		logCannon(currentLaunchId, "Reset received", "isDescending=" .. tostring(isDescending), "canDrop=" .. tostring(canDrop))
+		cleanupCannonSession("reset", false)
 		logCannon(currentLaunchId, "Reset complete", "isDescending=" .. tostring(isDescending))
 	elseif mode == "Launch" then
+		if not isFlightSessionActive then
+			logCannon(currentLaunchId, "Launch ignored without active session")
+			return
+		end
+
 		logCannon(currentLaunchId, "Launch received", "velocity=" .. tostring(velocity), "isDescending=" .. tostring(isDescending))
+		isPreparing = false
 		isDescending = false
+		restorePrepLocomotion()
+		enableLocalControls()
+		hum.AutoRotate = true
 		setCharacterCanCollide(false)
-		hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+		hrp.AssemblyAngularVelocity = zeroVector
 		hrp.AssemblyLinearVelocity = velocity
 		canDrop = true
 		currentLaunchId += 1
 		local thisLaunch = currentLaunchId
+		flightSampleToken += 1
+		local thisSampleToken = flightSampleToken
 		logCannon(thisLaunch, "Launch applied", "isDescending=" .. tostring(isDescending))
-		setDropHintVisible(true, "launch")
+		setLandButtonVisible(true)
 		hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
 		hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
 
@@ -145,7 +357,7 @@ Remotes.CannonDropEvent.OnClientEvent:Connect(function(mode, velocity)
 			local launchStart = tick()
 			while tick() - launchStart <= DEBUG_SAMPLE_DURATION do
 				task.wait(DEBUG_SAMPLE_INTERVAL)
-				if currentLaunchId ~= thisLaunch then
+				if currentLaunchId ~= thisLaunch or flightSampleToken ~= thisSampleToken then
 					logCannon(thisLaunch, "Flight sampler stopped", "reason=launchId_changed")
 					break
 				end
@@ -162,47 +374,24 @@ Remotes.CannonDropEvent.OnClientEvent:Connect(function(mode, velocity)
 				)
 			end
 		end)
-
-		task.delay(1.5, function()
-			if canDrop and currentLaunchId == thisLaunch then
-				setDropHintVisible(false, "launch_auto_hide")
-				logCannon(thisLaunch, "DropHint auto-hidden")
-			end
-		end)
 	elseif mode == "Descend" then
+		if not isFlightSessionActive then
+			logCannon(currentLaunchId, "Descend ignored without active session")
+			return
+		end
+
 		logCannon(currentLaunchId, "Descend received", "velocity=" .. tostring(velocity), "isDescending=" .. tostring(isDescending))
+		canDrop = false
+		isDescending = true
+		setLandButtonVisible(false)
 		hrp.AssemblyLinearVelocity = velocity
 	else
 		logCannon(currentLaunchId, "Unknown mode received", tostring(mode))
 	end
 end)
 
-UIS.InputBegan:Connect(function(input, processed)
-	if processed then
-		return
-	end
-
-	if input.KeyCode == Enum.KeyCode.Space and canDrop then
-		logCannon(currentLaunchId, "Space drop triggered")
-
-		canDrop = false
-		isDescending = true
-		setDropHintVisible(false, "space_drop")
-
-		hum.PlatformStand = false
-		hum:ChangeState(Enum.HumanoidStateType.Freefall)
-		setCharacterCanCollide(true)
-
-		local dropForce = -150
-		hrp.AssemblyLinearVelocity = Vector3.new(0, dropForce, 0)
-		hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-
-		logCannon(currentLaunchId, "Space drop applied", "dropForce=" .. tostring(dropForce))
-	end
-end)
-
 hum.Seated:Connect(function(active, seatPart)
-	if isFlightActive() or active then
+	if isCannonSessionActive() or active then
 		logCannon(
 			currentLaunchId,
 			"Seated changed",
@@ -213,19 +402,20 @@ hum.Seated:Connect(function(active, seatPart)
 end)
 
 hum:GetPropertyChangedSignal("SeatPart"):Connect(function()
-	if isFlightActive() then
+	if isCannonSessionActive() then
 		logCannon(currentLaunchId, "SeatPart changed", "seatPart=" .. seatPartLabel(hum.SeatPart))
 	end
 end)
 
 hum.StateChanged:Connect(function(_, newState)
 	if newState == Enum.HumanoidStateType.Landed then
+		if not isFlightSessionActive then
+			return
+		end
+
 		if isDescending then
 			logCannon(currentLaunchId, "Landed during descent", "isDescending=" .. tostring(isDescending))
-			isDescending = false
-			setCharacterCanCollide(true)
-			hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
-			hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+			cleanupCannonSession("landed_descend", true)
 			return
 		end
 
@@ -239,12 +429,7 @@ hum.StateChanged:Connect(function(_, newState)
 			"canDrop=" .. tostring(canDrop),
 			"isDescending=" .. tostring(isDescending)
 		)
-		setCharacterCanCollide(true)
-		hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
-		hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
-		forceUpright()
-		freezeMomentum()
-		setDropHintVisible(false, "landed")
+		cleanupCannonSession("landed", true)
 	else
 		logCannon(
 			currentLaunchId,
