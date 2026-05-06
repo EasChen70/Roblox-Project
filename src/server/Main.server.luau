@@ -10,6 +10,7 @@ local Placement = require(ServerScriptService.Placement)
 local Income = require(ServerScriptService.Income)
 local PlayerData = require(ServerScriptService.PlayerData)
 local Tutorial = require(ServerScriptService.Tutorial)
+local CommunityRewards = require(ServerScriptService.CommunityRewards)
 
 Spawner.start()
 
@@ -18,6 +19,7 @@ Income.setup()
 
 PlayerData.setup()
 Tutorial.init()
+CommunityRewards.init()
 PlayerData.start()
 
 Income.start()

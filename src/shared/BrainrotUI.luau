@@ -14,13 +14,27 @@ local RarityColors = {
 	Mythic = Color3.fromRGB(255, 50, 50),
 	Secret = Color3.fromRGB(50, 50, 50),
 	Divine = Color3.fromRGB(209, 35, 232),
+	Exclusive = Color3.fromRGB(75, 0, 130),
 }
 
 local LEVEL_COLOR = Color3.fromRGB(255, 215, 0)
 local UPGRADE_PINK = Color3.fromRGB(255, 60, 160)
 local UPGRADE_TEXT = Color3.fromRGB(255, 255, 255)
+local CLAIM_GOLD = Color3.fromRGB(255, 215, 0)
+local CLAIMED_GREEN = Color3.fromRGB(85, 255, 85)
 
-local function makeLabel(name, text, color, order)
+local function addTextSizeConstraint(label, minSize, maxSize)
+	if not minSize and not maxSize then
+		return
+	end
+
+	local constraint = Instance.new("UITextSizeConstraint")
+	constraint.MinTextSize = minSize or 1
+	constraint.MaxTextSize = maxSize or 100
+	constraint.Parent = label
+end
+
+local function makeLabel(name, text, color, order, minSize, maxSize, strokeThickness)
 	local label = Instance.new("TextLabel")
 	label.Name = name
 	label.Text = text
@@ -33,13 +47,15 @@ local function makeLabel(name, text, color, order)
 
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = Color3.fromRGB(0, 0, 0)
-	stroke.Thickness = 2
+	stroke.Thickness = strokeThickness or 2
 	stroke.Parent = label
+
+	addTextSizeConstraint(label, minSize, maxSize)
 
 	return label
 end
 
-local function createBillboardGui(model, studsOffset, alwaysOnTop)
+local function createBillboardGui(model, studsOffset, alwaysOnTop, adornee, parent)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "BrainrotBillboard"
 	billboard.Size = UDim2.fromScale(8, 5)
@@ -53,7 +69,8 @@ local function createBillboardGui(model, studsOffset, alwaysOnTop)
 	billboard.StudsOffset = studsOffset
 	billboard.AlwaysOnTop = alwaysOnTop or false
 	billboard.LightInfluence = 0
-	billboard.Parent = model.PrimaryPart
+	billboard.Adornee = adornee or model.PrimaryPart
+	billboard.Parent = parent or model.PrimaryPart
 
 	local frame = Instance.new("Frame")
 	frame.Name = "Container"
@@ -71,11 +88,42 @@ local function createBillboardGui(model, studsOffset, alwaysOnTop)
 	return billboard, frame
 end
 
+local function ensureClaimAttachment(model)
+	local primaryPart = model.PrimaryPart
+	if not primaryPart then
+		return nil
+	end
+
+	local existing = primaryPart:FindFirstChild("ClaimBillboardAnchor")
+	local boundsCFrame, boundsSize = model:GetBoundingBox()
+	local worldAnchorPosition = boundsCFrame.Position + Vector3.new(0, boundsSize.Y * 0.5 + 4, 0)
+	local localAnchorPosition = primaryPart.CFrame:PointToObjectSpace(worldAnchorPosition)
+
+	if existing and existing:IsA("Attachment") then
+		existing.Position = localAnchorPosition
+		return existing
+	end
+
+	local attachment = Instance.new("Attachment")
+	attachment.Name = "ClaimBillboardAnchor"
+	attachment.Position = localAnchorPosition
+	attachment.Parent = primaryPart
+	return attachment
+end
+
 local function formatLevelText(level, maxLevel)
 	if maxLevel and level >= maxLevel then
 		return "Max Level"
 	end
 	return "Level " .. level
+end
+
+local function applySecretStrokeStyle(label)
+	local stroke = label and label:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Color = Color3.fromRGB(255, 255, 255)
+		stroke.Thickness = 0.5
+	end
 end
 
 function BrainrotUI.createBillboard(model, data)
@@ -108,11 +156,96 @@ function BrainrotUI.createBillboard(model, data)
 	local rarityLabel = makeLabel("Rarity", rarity, rarityColor, 3)
 	rarityLabel.Parent = frame
 	if rarity == "Secret" then
-		local stroke = rarityLabel:FindFirstChildOfClass("UIStroke")
-		if stroke then
-			stroke.Color = Color3.fromRGB(255, 255, 255)
-			stroke.Thickness = 0.5
-		end
+		applySecretStrokeStyle(rarityLabel)
+	end
+
+	return billboard
+end
+
+function BrainrotUI.createClaimBillboard(model, data)
+	if not model.PrimaryPart then
+		return nil
+	end
+
+	local existing = model.PrimaryPart:FindFirstChild("ClaimBillboard")
+	if existing then
+		existing:Destroy()
+	end
+
+	local rarity = data.rarity or "Exclusive"
+	local rarityColor = RarityColors[rarity] or RarityColors.Common
+	local claimAttachment = ensureClaimAttachment(model)
+	local billboard, frame = createBillboardGui(
+		model,
+		Vector3.new(0, 0, 0),
+		false,
+		claimAttachment,
+		model.PrimaryPart
+	)
+	billboard.Name = "ClaimBillboard"
+	billboard.Size = UDim2.fromScale(8, 8)
+
+	local claimLabel = makeLabel("ClaimText", "CLAIM NOW", CLAIM_GOLD, -1, 18, 30, 1.5)
+	claimLabel.Size = UDim2.fromScale(1, 0.24)
+	claimLabel.Parent = frame
+
+	local incomeLabel = makeLabel(
+		"Income",
+		Util.formatMoney(data.incomePerSec or 0) .. "/s",
+		Color3.fromRGB(85, 255, 85),
+		1,
+		12,
+		20,
+		1
+	)
+	incomeLabel.Parent = frame
+
+	local nameLabel = makeLabel("Name", data.name or "", Color3.fromRGB(255, 255, 255), 2, 12, 20, 1)
+	nameLabel.Parent = frame
+
+	local rarityLabel = makeLabel("Rarity", rarity, rarityColor, 3, 12, 20, 1)
+	rarityLabel.Parent = frame
+	if rarity == "Secret" then
+		applySecretStrokeStyle(rarityLabel)
+	end
+
+	return billboard
+end
+
+function BrainrotUI.createClaimedBillboard(model, data)
+	if not model.PrimaryPart then
+		return nil
+	end
+
+	local existing = model.PrimaryPart:FindFirstChild("ClaimedBillboard")
+	if existing then
+		existing:Destroy()
+	end
+
+	local rarity = data.rarity or "Exclusive"
+	local rarityColor = RarityColors[rarity] or RarityColors.Common
+	local claimAttachment = ensureClaimAttachment(model)
+	local billboard, frame = createBillboardGui(
+		model,
+		Vector3.new(0, 0, 0),
+		false,
+		claimAttachment,
+		model.PrimaryPart
+	)
+	billboard.Name = "ClaimedBillboard"
+	billboard.Size = UDim2.fromScale(8, 7)
+
+	local claimedLabel = makeLabel("ClaimedText", "CLAIMED!", CLAIMED_GREEN, -1, 18, 30, 1.5)
+	claimedLabel.Size = UDim2.fromScale(1, 0.24)
+	claimedLabel.Parent = frame
+
+	local nameLabel = makeLabel("Name", data.name or "", Color3.fromRGB(255, 255, 255), 1, 12, 20, 1)
+	nameLabel.Parent = frame
+
+	local rarityLabel = makeLabel("Rarity", rarity, rarityColor, 2, 12, 20, 1)
+	rarityLabel.Parent = frame
+	if rarity == "Secret" then
+		applySecretStrokeStyle(rarityLabel)
 	end
 
 	return billboard
@@ -181,11 +314,7 @@ function BrainrotUI.createWorldBillboard(model, data)
     rarityLabel.Parent = frame
 
     if rarity == "Secret" then
-        local stroke = rarityLabel:FindFirstChildOfClass("UIStroke")
-        if stroke then
-            stroke.Color = Color3.fromRGB(255, 255, 255)
-            stroke.Thickness = 0.5
-        end
+        applySecretStrokeStyle(rarityLabel)
     end
 
     -- === OPTIMIZED TICK() TIMER LOGIC ===

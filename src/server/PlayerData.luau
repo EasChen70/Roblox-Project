@@ -23,7 +23,7 @@ local PlayerData = {}
 -----CONFIG/CONSTANTS-----
 local DATA_STORE_NAME = "BrainrotCannonV1"
 
-local CURRENT_VERSION = 5 -- bumped from 4 to 5 for sparse slot key persistence
+local CURRENT_VERSION = 6 -- bumped from 5 to 6 for community reward claim persistence
 
 local LOCK_EXPIRY = 60
 local LOCK_REFRESH = 20
@@ -151,6 +151,12 @@ migrations[5] = function(data)
 	return data
 end
 
+-- Migration v5 -> v6: persist the one-time community reward claim
+migrations[6] = function(data)
+	data.communityRewardClaimed = data.communityRewardClaimed == true
+	return data
+end
+
 -----HELPERS-----
 
 local function createDefault()
@@ -164,6 +170,7 @@ local function createDefault()
 		inventory = {},
 		tutorialComplete = false,
 		tutorialStepFlags = {},
+		communityRewardClaimed = false,
 	}
 end
 
@@ -385,6 +392,7 @@ local function clonePersistedData(data)
 		inventory = cloneInventoryData(data.inventory),
 		tutorialComplete = data.tutorialComplete == true,
 		tutorialStepFlags = cloneCompletedFlags(data.tutorialStepFlags),
+		communityRewardClaimed = data.communityRewardClaimed == true,
 	}
 end
 
@@ -828,14 +836,12 @@ function PlayerData.hydrateSlots(base, slots)
 		end
 
 		local collectButton = slot:FindFirstChild("CollectButton")
-		local spawnPos = point.Position + Vector3.new(0, Config.PlacementYOffset, 0)
-
-		if collectButton then
-			local targetFlat = Vector3.new(collectButton.Position.X, spawnPos.Y, collectButton.Position.Z)
-			clone:PivotTo(CFrame.lookAt(spawnPos, targetFlat) * CFrame.Angles(0, math.rad(180), 0))
-		else
-			clone:PivotTo(CFrame.new(spawnPos))
+		local placementCFrame = Placement.getPlacementCFrame(slotData.name, slot)
+		if not placementCFrame then
+			clone:Destroy()
+			continue
 		end
+		clone:PivotTo(placementCFrame)
 
 		clone.Parent = slot
 
@@ -1037,6 +1043,25 @@ function PlayerData.setTutorialState(player, tutorialComplete, tutorialStepFlags
 
 	data.tutorialComplete = tutorialComplete == true
 	data.tutorialStepFlags = cloneCompletedFlags(tutorialStepFlags)
+	return true
+end
+
+function PlayerData.getCommunityRewardClaimed(player)
+	local data = sessionData[player]
+	if not data then
+		return nil
+	end
+
+	return data.communityRewardClaimed == true
+end
+
+function PlayerData.setCommunityRewardClaimed(player)
+	local data = sessionData[player]
+	if not data then
+		return false
+	end
+
+	data.communityRewardClaimed = true
 	return true
 end
 

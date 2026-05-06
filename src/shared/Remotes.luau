@@ -23,6 +23,8 @@ local remoteNames = {
 	"SellAllInventoryItems",
 	"TutorialStepChanged",
 	"TutorialSkipRequested",
+	"CommunityClaimRequest",
+	"CommunityClaimResult",
 }
 if RunService:IsServer() then
 	-- Server creates the folder and remotes

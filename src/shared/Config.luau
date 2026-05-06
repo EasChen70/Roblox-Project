@@ -21,6 +21,17 @@ local Config = {
 	CarryOffset = Vector3.new(0, 3, 0),
 	CarryRotation = CFrame.Angles(0, math.rad(180), 0),
 	CarryAnimationId = "rbxassetid://93613705528273",
+	SpecialBrainrotTransforms = {
+		["Tung Tung Sahur"] = {
+			carryCorrection = CFrame.Angles(0, math.rad(240), 0) * CFrame.Angles(0, 0, math.rad(180)) * CFrame.new(-0.8, 0, 0),
+			placedCorrection = CFrame.Angles(0, math.rad(240), 0) * CFrame.Angles(0, 0, math.rad(180)) * CFrame.new(-0.8, 0, 0),
+		},
+	},
+
+	-- Community rewards
+	CommunityGroupId = 166025081,
+	ExclusiveBrainrotName = "Tung Tung Sahur",
+	PedestalModelName = "ExclusiveJoinReward",
 
 	-- Shop zones
 	ShopRingRadius = 9.5,

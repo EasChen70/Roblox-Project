@@ -32,6 +32,7 @@ local modelFolders = {
 	Mythic = ServerStorage:WaitForChild("MythicBrainRotModels"),
 	Secret = ServerStorage:WaitForChild("SecretBrainRotModels"),
 	Divine = ServerStorage:WaitForChild("DivineBrainRotModels"),
+	Exclusive = ServerStorage:FindFirstChild("ExclusiveBrainRotModels"),
 }
 
 ------------------------------------------------
@@ -74,6 +75,16 @@ local function getRegistryBaseIncome(name)
 	end
 
 	return nil
+end
+
+local function getCarryCorrection(name)
+	local specialTransforms = Config.SpecialBrainrotTransforms
+	local transformData = specialTransforms and specialTransforms[name]
+	return (transformData and transformData.carryCorrection) or CFrame.new()
+end
+
+local function getCarryPivot(rootPart, name)
+	return rootPart.CFrame * CFrame.new(Config.CarryOffset) * Config.CarryRotation * getCarryCorrection(name)
 end
 
 local function resolveBaseIncome(name, explicitBaseIncome, fallbackIncome)
@@ -425,7 +436,7 @@ local function createBrainrotTool(player, data)
 			end
 		end
 
-		visual:PivotTo(rootPart.CFrame * CFrame.new(Config.CarryOffset) * Config.CarryRotation)
+		visual:PivotTo(getCarryPivot(rootPart, data.name))
 
 		visual.Parent = character
 
@@ -645,7 +656,7 @@ function Pickup.grab(player, model)
 
 	print("[Pickup] Model part count:", partCount)
 
-	model:PivotTo(root.CFrame * CFrame.new(Config.CarryOffset) * Config.CarryRotation)
+	model:PivotTo(getCarryPivot(root, model:GetAttribute("Name") or model.Name))
 	model.Parent = character
 
 	for _, part in model:GetDescendants() do

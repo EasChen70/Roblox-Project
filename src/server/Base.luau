@@ -221,6 +221,10 @@ function Base.claimBase(player)
 			print(player.Name, "claimed", base.Name)
 			createBaseSign(base, player)
 			Remotes.BaseAssigned:FireClient(player, base.Name)
+
+			local CommunityRewards = require(game.ServerScriptService.CommunityRewards)
+			CommunityRewards.syncPedestalForBase(base, player)
+
 			return base
 		end
 	end
@@ -233,6 +237,10 @@ function Base.releaseBase(player)
 	if claimedBases[player] then
 		local base = claimedBases[player]
 		print(player.Name, "released", base.Name)
+
+		local CommunityRewards = require(game.ServerScriptService.CommunityRewards)
+		CommunityRewards.cleanupBase(base)
+
 		clearBaseSign(base)
 		clearBaseSlots(base) -- destroy placed brainrots, upgrade signs, reset slot visuals
 		claimedBases[player] = nil

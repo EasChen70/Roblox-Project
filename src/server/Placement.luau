@@ -32,6 +32,13 @@ local function getRegistryBaseIncome(name)
 
 	return nil
 end
+
+local function getPlacedCorrection(name)
+	local specialTransforms = Config.SpecialBrainrotTransforms
+	local transformData = specialTransforms and specialTransforms[name]
+	return (transformData and transformData.placedCorrection) or CFrame.new()
+end
+
 local modelFolders = {
 	Common = ServerStorage:WaitForChild("CommonBrainRotModels"),
 	Rare = ServerStorage:WaitForChild("RareBrainRotModels"),
@@ -40,6 +47,7 @@ local modelFolders = {
 	Mythic = ServerStorage:WaitForChild("MythicBrainRotModels"),
 	Secret = ServerStorage:WaitForChild("SecretBrainRotModels"),
 	Divine = ServerStorage:WaitForChild("DivineBrainRotModels"),
+	Exclusive = ServerStorage:FindFirstChild("ExclusiveBrainRotModels"),
 }
 
 local bases = game.Workspace.Map.Bases
@@ -74,6 +82,26 @@ local function createPromptAttachment(parentPart, name, yOffset)
 	att.Position = Vector3.new(0, yOffset, 0)
 	att.Parent = parentPart
 	return att
+end
+
+function Placement.getPlacementCFrame(brainrotName, slot)
+	local point = slot:FindFirstChild("PlacementPoint")
+	if not point then
+		return nil
+	end
+
+	local collectButton = slot:FindFirstChild("CollectButton")
+	local spawnPos = point.Position + Vector3.new(0, Config.PlacementYOffset, 0)
+	local basePivot
+
+	if collectButton then
+		local targetFlat = Vector3.new(collectButton.Position.X, spawnPos.Y, collectButton.Position.Z)
+		basePivot = CFrame.lookAt(spawnPos, targetFlat) * CFrame.Angles(0, math.rad(180), 0)
+	else
+		basePivot = CFrame.new(spawnPos)
+	end
+
+	return basePivot * getPlacedCorrection(brainrotName)
 end
 
 -- Shared prompt setup for a placed model on a slot.
@@ -333,16 +361,11 @@ function Placement.setup()
 						end
 					end
 
-					local collectButton = slot:FindFirstChild("CollectButton")
-					local placementOffset = Vector3.new(0, Config.PlacementYOffset, 0)
-					local spawnPos = point.Position + placementOffset
-
-					if collectButton then
-						local targetFlat = Vector3.new(collectButton.Position.X, spawnPos.Y, collectButton.Position.Z)
-						clone:PivotTo(CFrame.lookAt(spawnPos, targetFlat) * CFrame.Angles(0, math.rad(180), 0))
-					else
-						clone:PivotTo(CFrame.new(spawnPos))
+					local placementCFrame = Placement.getPlacementCFrame(name, slot)
+					if not placementCFrame then
+						return
 					end
+					clone:PivotTo(placementCFrame)
 
 					clone.Parent = slot
 

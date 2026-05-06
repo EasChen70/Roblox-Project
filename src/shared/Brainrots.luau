@@ -34,6 +34,8 @@ local Brainrots = {
 	{ name = "Crab Chef",             rarity = "Divine",    incomePerSec = 250000,  spawnWeight = 60 },
 	{ name = "Garama",                rarity = "Divine",    incomePerSec = 300000,  spawnWeight = 30 },
 	{ name = "Strawberry Elephant",   rarity = "Divine",    incomePerSec = 350000,  spawnWeight = 30 },
+	-- Exclusive
+	{ name = "Tung Tung Sahur",       rarity = "Exclusive", incomePerSec = 167,     spawnWeight = 0 },
 }
 
 -- Level/Income scaling by rarity (v2 — Max Level 50)
@@ -45,6 +47,7 @@ Brainrots.RarityScaling = {
 	Mythic    = { incomeScale = 0.30, costMult = 10 },
 	Secret    = { incomeScale = 0.30, costMult = 10 },
 	Divine 	  = { incomeScale = 0.35, costMult = 10 },
+	Exclusive = { incomeScale = 0.30, costMult = 10 },
 }
 
 Brainrots.MaxLevel = 50
