@@ -25,6 +25,7 @@ local remoteNames = {
 	"TutorialSkipRequested",
 	"CommunityClaimRequest",
 	"CommunityClaimResult",
+	"SpinWheel",
 }
 if RunService:IsServer() then
 	-- Server creates the folder and remotes

@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local BaseIdentity = require(ReplicatedStorage.BaseIdentity)
 local Remotes = require(ReplicatedStorage.Remotes)
 local Util = require(ReplicatedStorage.Util)
 
@@ -8,9 +9,71 @@ local Base = {}
 
 local bases = game.Workspace.Map.Bases
 local claimedBases = {}
+local validatedBaseIds = false
 
 function Base.getPlayerBase(player)
 	return claimedBases[player]
+end
+
+function Base.getBaseId(base)
+	return BaseIdentity.getResolvedBaseId(base)
+end
+
+local function setAssignedBaseAttributes(player, base)
+	player:SetAttribute("AssignedBaseId", base and Base.getBaseId(base) or nil)
+	player:SetAttribute("AssignedBaseName", base and base.Name or nil)
+end
+
+local function getSortedBases()
+	return BaseIdentity.getSortedBases(bases)
+end
+
+local function warnInvalidBaseId(base, sortKey)
+	local fallbackDetail = sortKey.fallbackId ~= nil
+		and ("falling back to name suffix " .. tostring(sortKey.fallbackId))
+		or "falling back to alphabetical name ordering"
+
+	warn(
+		string.format(
+			"[Base] %s has %s BaseId metadata; %s.",
+			base:GetFullName(),
+			sortKey.issue,
+			fallbackDetail
+		)
+	)
+end
+
+local function validateBases()
+	if validatedBaseIds then
+		return
+	end
+
+	validatedBaseIds = true
+
+	local seenConfiguredIds = {}
+	for _, base in ipairs(bases:GetChildren()) do
+		local sortKey = BaseIdentity.getSortKey(base)
+		if sortKey.issue then
+			warnInvalidBaseId(base, sortKey)
+		end
+
+		local configuredId = sortKey.configuredId
+		if configuredId ~= nil then
+			local existing = seenConfiguredIds[configuredId]
+			if existing and existing ~= base then
+				warn(
+					string.format(
+						"[Base] Duplicate BaseId %d detected on %s and %s; using name tie-break for deterministic assignment.",
+						configuredId,
+						existing:GetFullName(),
+						base:GetFullName()
+					)
+				)
+			elseif not existing then
+				seenConfiguredIds[configuredId] = base
+			end
+		end
+	end
 end
 
 local function createBaseSign(base, player)
@@ -207,7 +270,7 @@ function Base.claimBase(player)
 		return claimedBases[player]
 	end
 
-	for _, base in bases:GetChildren() do
+	for _, base in ipairs(getSortedBases()) do
 		local taken = false
 		for _, claimedBase in claimedBases do
 			if claimedBase == base then
@@ -218,6 +281,7 @@ function Base.claimBase(player)
 
 		if not taken then
 			claimedBases[player] = base
+			setAssignedBaseAttributes(player, base)
 			print(player.Name, "claimed", base.Name)
 			createBaseSign(base, player)
 			Remotes.BaseAssigned:FireClient(player, base.Name)
@@ -229,6 +293,7 @@ function Base.claimBase(player)
 		end
 	end
 
+	setAssignedBaseAttributes(player, nil)
 	warn("No bases available for", player.Name)
 	return nil
 end
@@ -245,6 +310,8 @@ function Base.releaseBase(player)
 		clearBaseSlots(base) -- destroy placed brainrots, upgrade signs, reset slot visuals
 		claimedBases[player] = nil
 	end
+
+	setAssignedBaseAttributes(player, nil)
 end
 
 function Base.getOwner(baseModel)
@@ -255,6 +322,8 @@ function Base.getOwner(baseModel)
 	end
 	return nil
 end
+
+validateBases()
 
 Players.PlayerAdded:Connect(function(player)
 	Base.claimBase(player)

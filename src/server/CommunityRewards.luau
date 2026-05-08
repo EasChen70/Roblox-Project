@@ -115,6 +115,7 @@ end
 local function fireStateSync(player, base, claimed, isActive)
 	Remotes.CommunityClaimResult:FireClient(player, {
 		kind = "stateSync",
+		baseId = base and Base.getBaseId(base) or nil,
 		baseName = base and base.Name or nil,
 		claimed = claimed == true,
 		promptActive = isActive == true,
@@ -186,6 +187,7 @@ local function handlePromptTriggered(base, player)
 
 	Remotes.CommunityClaimResult:FireClient(player, {
 		kind = "openModal",
+		baseId = Base.getBaseId(base),
 		baseName = base.Name,
 	})
 end
@@ -232,6 +234,7 @@ function CommunityRewards.handleClaimRequest(player, mode)
 		else
 			Remotes.CommunityClaimResult:FireClient(player, {
 				kind = "stateSync",
+				baseId = nil,
 				baseName = nil,
 				claimed = PlayerData.getCommunityRewardClaimed(player) == true,
 				promptActive = false,
@@ -382,7 +385,9 @@ function CommunityRewards.init()
 			continue
 		end
 
+		local baseId = Base.getBaseId(base)
 		displayModel:SetAttribute("CommunityBaseName", base.Name)
+		displayModel:SetAttribute("CommunityBaseId", baseId)
 
 		local promptAttachment = createPromptAttachment(primaryPart)
 		local prompt = promptAttachment:FindFirstChild("CommunityClaimPrompt")
@@ -398,6 +403,7 @@ function CommunityRewards.init()
 		end
 		prompt:SetAttribute("CommunityClaimPrompt", true)
 		prompt:SetAttribute("CommunityBaseName", base.Name)
+		prompt:SetAttribute("CommunityBaseId", baseId)
 
 		local billboard = BrainrotUI.createClaimBillboard(displayModel, {
 			name = Config.ExclusiveBrainrotName,
@@ -407,6 +413,7 @@ function CommunityRewards.init()
 		if billboard then
 			billboard:SetAttribute("CommunityClaimBillboard", true)
 			billboard:SetAttribute("CommunityBaseName", base.Name)
+			billboard:SetAttribute("CommunityBaseId", baseId)
 		end
 
 		local claimedBillboard = BrainrotUI.createClaimedBillboard(displayModel, {
@@ -416,6 +423,7 @@ function CommunityRewards.init()
 		if claimedBillboard then
 			claimedBillboard:SetAttribute("CommunityClaimedBillboard", true)
 			claimedBillboard:SetAttribute("CommunityBaseName", base.Name)
+			claimedBillboard:SetAttribute("CommunityBaseId", baseId)
 		end
 
 		local state = {

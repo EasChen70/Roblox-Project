@@ -2,6 +2,7 @@
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local BaseIdentity = require(ReplicatedStorage.BaseIdentity)
 local Config = require(ReplicatedStorage.Config)
 local Remotes = require(ReplicatedStorage.Remotes)
 local CannonShopClient = require(script.Parent.CannonShopClient)
@@ -9,16 +10,65 @@ local CommunityRewardsClient = require(script.Parent.CommunityRewardsClient)
 local SellShopClient = require(script.Parent.SellShopClient)
 local TutorialClient = require(script.Parent.TutorialClient)
 local player = Players.LocalPlayer
+local myBaseId = nil
 local myBaseName = nil
 
-local function createYourBaseIndicator(baseName)
+local function applyAssignedBase(baseId, baseName)
+	myBaseId = BaseIdentity.normalizeBaseId(baseId)
+	myBaseName = type(baseName) == "string" and baseName or nil
+end
+
+local function syncAssignedBaseFromAttributes()
+	applyAssignedBase(player:GetAttribute("AssignedBaseId"), player:GetAttribute("AssignedBaseName"))
+end
+
+local function findOwningBase(instance)
+	local current = instance
+	while current and current ~= game.Workspace do
+		if current.Parent and current.Parent.Name == "Bases" then
+			return current
+		end
+		current = current.Parent
+	end
+
+	return nil
+end
+
+local function baseMatchesMine(base)
+	local baseId = BaseIdentity.getResolvedBaseId(base)
+	if myBaseId ~= nil and baseId ~= nil then
+		return myBaseId == baseId
+	end
+
+	return myBaseName ~= nil and base.Name == myBaseName
+end
+
+local function findAssignedBase()
 	local bases = game.Workspace.Map.Bases
-	local myBase = bases:FindFirstChild(baseName)
-	if not myBase then
+	local myBase = myBaseId ~= nil and BaseIdentity.findBaseById(bases, myBaseId) or nil
+	if not myBase and myBaseName then
+		myBase = bases:FindFirstChild(myBaseName)
+	end
+	return myBase
+end
+
+local function clearYourBaseIndicators()
+	local bases = game.Workspace.Map.Bases
+	for _, base in ipairs(bases:GetChildren()) do
+		local sign = base:FindFirstChild("Sign")
+		local indicator = sign and sign:FindFirstChild("YourBaseIndicator")
+		if indicator then
+			indicator:Destroy()
+		end
+	end
+end
+
+local function createYourBaseIndicator(base)
+	if not base then
 		return
 	end
 
-	local sign = myBase:WaitForChild("Sign", 5)
+	local sign = base:WaitForChild("Sign", 5)
 	if not sign then
 		return
 	end
@@ -68,18 +118,18 @@ local function createYourBaseIndicator(baseName)
 	arrowStroke.Parent = arrow
 end
 
-Remotes.BaseAssigned.OnClientEvent:Connect(function(baseName)
-	myBaseName = baseName
-	createYourBaseIndicator(baseName)
-end)
+local function refreshYourBaseIndicator()
+	clearYourBaseIndicators()
+	createYourBaseIndicator(findAssignedBase())
+end
 
-task.delay(2, function()
-	if myBaseName then
+local function resolveAssignedBaseFromSigns()
+	if myBaseId ~= nil or myBaseName ~= nil then
 		return
 	end
 
 	local bases = game.Workspace.Map.Bases
-	for _, base in bases:GetChildren() do
+	for _, base in ipairs(bases:GetChildren()) do
 		local sign = base:FindFirstChild("Sign")
 		if sign and sign:FindFirstChild("BaseSign") then
 			local bg = sign.BaseSign:FindFirstChild("Background")
@@ -88,14 +138,38 @@ task.delay(2, function()
 				if info then
 					local nameLabel = info:FindFirstChild("PlayerName")
 					if nameLabel and nameLabel.Text == player.Name then
-						myBaseName = base.Name
-						createYourBaseIndicator(base.Name)
-						break
+						applyAssignedBase(BaseIdentity.getResolvedBaseId(base), base.Name)
+						return
 					end
 				end
 			end
 		end
 	end
+end
+
+syncAssignedBaseFromAttributes()
+
+Remotes.BaseAssigned.OnClientEvent:Connect(function(baseName)
+	syncAssignedBaseFromAttributes()
+	if myBaseName == nil and type(baseName) == "string" then
+		myBaseName = baseName
+	end
+	refreshYourBaseIndicator()
+end)
+
+player:GetAttributeChangedSignal("AssignedBaseId"):Connect(function()
+	syncAssignedBaseFromAttributes()
+	refreshYourBaseIndicator()
+end)
+
+player:GetAttributeChangedSignal("AssignedBaseName"):Connect(function()
+	syncAssignedBaseFromAttributes()
+	refreshYourBaseIndicator()
+end)
+
+task.delay(2, function()
+	resolveAssignedBaseFromSigns()
+	refreshYourBaseIndicator()
 end)
 
 ProximityPromptService.PromptShown:Connect(function(prompt)
@@ -103,15 +177,9 @@ ProximityPromptService.PromptShown:Connect(function(prompt)
 		return
 	end
 
-	local current = prompt.Parent
-	while current and current ~= game.Workspace do
-		if current.Parent and current.Parent.Name == "Bases" then
-			if not myBaseName or current.Name ~= myBaseName then
-				prompt.Enabled = false
-			end
-			return
-		end
-		current = current.Parent
+	local base = findOwningBase(prompt)
+	if base and not baseMatchesMine(base) then
+		prompt.Enabled = false
 	end
 end)
 

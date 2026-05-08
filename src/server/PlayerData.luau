@@ -23,7 +23,7 @@ local PlayerData = {}
 -----CONFIG/CONSTANTS-----
 local DATA_STORE_NAME = "BrainrotCannonV1"
 
-local CURRENT_VERSION = 6 -- bumped from 5 to 6 for community reward claim persistence
+local CURRENT_VERSION = 7 -- bumped from 6 to 7 for wheel spin time persistence
 
 local LOCK_EXPIRY = 60
 local LOCK_REFRESH = 20
@@ -157,6 +157,11 @@ migrations[6] = function(data)
 	return data
 end
 
+-- Migration v6 -> v7: Add lastSpinTime
+migrations[7] = function(data)
+	data.lastSpinTime = data.lastSpinTime or 0
+	return data
+end
 -----HELPERS-----
 
 local function createDefault()
@@ -171,6 +176,7 @@ local function createDefault()
 		tutorialComplete = false,
 		tutorialStepFlags = {},
 		communityRewardClaimed = false,
+		lastSpinTime = 0,
 	}
 end
 
@@ -343,6 +349,7 @@ local function readLiveState(player, data)
 		end
 		data.cannonPower = player:GetAttribute("CannonPower") or 1
 		data.rebirthMultiplier = player:GetAttribute("RebirthMultiplier") or Config.RebirthBaseMultiplier
+		data.lastSpinTime = player:GetAttribute("LastSpinTime") or 0
 	end
 
 	data.slots = readSlots(player)
@@ -393,6 +400,7 @@ local function clonePersistedData(data)
 		tutorialComplete = data.tutorialComplete == true,
 		tutorialStepFlags = cloneCompletedFlags(data.tutorialStepFlags),
 		communityRewardClaimed = data.communityRewardClaimed == true,
+		lastSpinTime = data.lastSpinTime or 0,
 	}
 end
 
@@ -702,6 +710,7 @@ function PlayerData.load(player)
 	leaderstats.Rebirths.Value = loadedData.rebirths or 0
 	player:SetAttribute("CannonPower", loadedData.cannonPower or 1)
 	player:SetAttribute("RebirthMultiplier", loadedData.rebirthMultiplier or Config.RebirthBaseMultiplier)
+	player:SetAttribute("LastSpinTime", loadedData.lastSpinTime or 0)
 
 	print(
 		"[PlayerData] Loaded",

@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local BaseIdentity = require(ReplicatedStorage.BaseIdentity)
 local Config = require(ReplicatedStorage.Config)
 local Remotes = require(ReplicatedStorage.Remotes)
 local TutorialSteps = require(ReplicatedStorage.TutorialSteps)
@@ -57,6 +58,7 @@ local BANNER_TOP_MARGIN = 4
 local BANNER_VIEWPORT_WIDTH_RATIO = 0.88
 
 local BaseContext = {
+	baseId = nil,
 	baseName = nil,
 }
 local InventoryState = {}
@@ -163,8 +165,13 @@ function InventoryState.hasEquippedBrainrot()
 	return false
 end
 
-function BaseContext.setBaseName(baseName)
-	BaseContext.baseName = baseName
+function BaseContext.setAssignedBase(baseId, baseName)
+	BaseContext.baseId = BaseIdentity.normalizeBaseId(baseId)
+	BaseContext.baseName = type(baseName) == "string" and baseName or nil
+end
+
+function BaseContext.syncFromPlayerAttributes()
+	BaseContext.setAssignedBase(player:GetAttribute("AssignedBaseId"), player:GetAttribute("AssignedBaseName"))
 end
 
 function BaseContext.resolveFromSigns()
@@ -181,7 +188,7 @@ function BaseContext.resolveFromSigns()
 		local info = background and background:FindFirstChild("Info")
 		local nameLabel = info and info:FindFirstChild("PlayerName")
 		if nameLabel and nameLabel:IsA("TextLabel") and nameLabel.Text == player.Name then
-			BaseContext.baseName = base.Name
+			BaseContext.setAssignedBase(BaseIdentity.getResolvedBaseId(base), base.Name)
 			return
 		end
 	end
@@ -200,15 +207,28 @@ function BaseContext.findOwningBase(instance)
 end
 
 function BaseContext.belongsToMyBase(instance)
-	if not BaseContext.baseName then
+	if BaseContext.baseId == nil and not BaseContext.baseName then
+		BaseContext.syncFromPlayerAttributes()
+	end
+
+	if BaseContext.baseId == nil and not BaseContext.baseName then
 		BaseContext.resolveFromSigns()
-		if not BaseContext.baseName then
+		if BaseContext.baseId == nil and not BaseContext.baseName then
 			return false
 		end
 	end
 
 	local base = BaseContext.findOwningBase(instance)
-	return base ~= nil and base.Name == BaseContext.baseName
+	if not base then
+		return false
+	end
+
+	local baseId = BaseIdentity.getResolvedBaseId(base)
+	if BaseContext.baseId ~= nil and baseId ~= nil then
+		return baseId == BaseContext.baseId
+	end
+
+	return BaseContext.baseName ~= nil and base.Name == BaseContext.baseName
 end
 
 local function getSlotFromInstance(instance)
@@ -1756,7 +1776,20 @@ function TutorialClient.start()
 	end)
 
 	Remotes.BaseAssigned.OnClientEvent:Connect(function(baseName)
-		BaseContext.setBaseName(baseName)
+		BaseContext.syncFromPlayerAttributes()
+		if BaseContext.baseName == nil and type(baseName) == "string" then
+			BaseContext.baseName = baseName
+		end
+		refreshDisplay()
+	end)
+
+	player:GetAttributeChangedSignal("AssignedBaseId"):Connect(function()
+		BaseContext.syncFromPlayerAttributes()
+		refreshDisplay()
+	end)
+
+	player:GetAttributeChangedSignal("AssignedBaseName"):Connect(function()
+		BaseContext.syncFromPlayerAttributes()
 		refreshDisplay()
 	end)
 
@@ -1799,7 +1832,10 @@ function TutorialClient.start()
 	end)
 
 	task.delay(2, function()
-		if not BaseContext.baseName then
+		if BaseContext.baseId == nil and not BaseContext.baseName then
+			BaseContext.syncFromPlayerAttributes()
+		end
+		if BaseContext.baseId == nil and not BaseContext.baseName then
 			BaseContext.resolveFromSigns()
 			refreshDisplay()
 		end
