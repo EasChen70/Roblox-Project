@@ -4,9 +4,18 @@ local Config = {
 	-- Base
 	MaxSlots = 12,
 	MaxPlayers = 5,
+	DefaultWalkSpeed = 18,
 	IncomeTickRate = 1,
 	PlacementYOffset = -0.5,
 	UpgradeSoundId = "rbxassetid://76834925120308",
+	Gamepasses = {
+		DoubleCash = 1832707337,
+		SpeedBoost = 1832449212,
+	},
+	GamepassValues = {
+		DoubleCashMultiplier = 2.0,
+		SpeedBoostMultiplier = 1.5,
+	},
 
 	-- Spawner
 	SpawnInterval = 3,

@@ -4,7 +4,9 @@ local SwingSound = Handle:WaitForChild("SwingSound")
 -- [[ NEW: Reference the Unsheathe sound ]] --
 local EquipSound = Handle:WaitForChild("EquipSound") -- Ensure a sound named 'EquipSound' is in the Handle
 
+local Players = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
+local Gamepasses = require(ServerScriptService:WaitForChild("Gamepasses"))
 local Pickup = require(ServerScriptService:WaitForChild("Pickup"))
 
 local BaseUrl = "rbxassetid://"
@@ -98,11 +100,19 @@ Handle.Touched:Connect(function(otherPart)
 		spin:Destroy()
 		attachment:Destroy()
 
+		local savedUseJumpPower = hitHumanoid.UseJumpPower
+		local savedJumpPower = hitHumanoid.JumpPower
+		local savedJumpHeight = hitHumanoid.JumpHeight
+
 		hitHumanoid.PlatformStand = true 
-		hitHumanoid.JumpPower = 0
+		if savedUseJumpPower then
+			hitHumanoid.JumpPower = 0
+		else
+			hitHumanoid.JumpHeight = 0
+		end
 		hitHumanoid.WalkSpeed = 0
 
-		local player = game.Players:GetPlayerFromCharacter(hitChar)
+		local player = Players:GetPlayerFromCharacter(hitChar)
 		if player then
 			pcall(function() rootPart:SetNetworkOwner(player) end)
 		end
@@ -114,8 +124,13 @@ Handle.Touched:Connect(function(otherPart)
 
 				if hitHumanoid then
 					hitHumanoid.PlatformStand = false
-					hitHumanoid.JumpPower = 50 
-					hitHumanoid.WalkSpeed = 16 
+					if savedUseJumpPower then
+						hitHumanoid.JumpPower = savedJumpPower
+					else
+						hitHumanoid.JumpHeight = savedJumpHeight
+					end
+					local stunnedPlayer = Players:GetPlayerFromCharacter(hitChar)
+					Gamepasses.applyDefaultSpeed(stunnedPlayer, hitHumanoid)
 					hitHumanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
 					rootPart.CFrame = rootPart.CFrame * CFrame.new(0, 2, 0)
 				end

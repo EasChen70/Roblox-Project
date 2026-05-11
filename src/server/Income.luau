@@ -8,6 +8,16 @@ local Income = {}
 
 local onDataChangedCallback = nil
 
+local function getEffectiveMultiplier(player)
+	if not player then
+		return 1.0
+	end
+
+	local rebirthMult = player:GetAttribute("RebirthMultiplier") or Config.RebirthBaseMultiplier
+	local cashMult = player:GetAttribute("HasDoubleCash") and Config.GamepassValues.DoubleCashMultiplier or 1.0
+	return rebirthMult * cashMult
+end
+
 function Income.onDataChanged(cb)
 	onDataChangedCallback = cb
 end
@@ -127,8 +137,7 @@ function Income.start()
 					if not brainrot then continue end
 
 					local incomePerSec = brainrot:GetAttribute("IncomePerSec") or 0
-					local rebirthMult = (owner and owner:GetAttribute("RebirthMultiplier")) or 1.0
-					local effectiveIncome = math.floor(incomePerSec * rebirthMult)
+					local effectiveIncome = math.floor(incomePerSec * getEffectiveMultiplier(owner))
 					totalIncome += effectiveIncome
 
 					local current = slot:GetAttribute("AccumulatedCash") or 0
