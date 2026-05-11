@@ -6,8 +6,17 @@ local Config = require(ReplicatedStorage.Config)
 
 local Gamepasses = {}
 
+local DEBUG_GAMEPASSES = true
 local initialized = false
 local passIdToKey = {}
+
+local function logDebug(...)
+	if not DEBUG_GAMEPASSES then
+		return
+	end
+
+	print("[Gamepasses]", ...)
+end
 
 local function getAttributeName(key)
 	return "Has" .. key
@@ -25,6 +34,14 @@ local function refreshOwnership(player)
 
 		if ok then
 			setOwnershipAttribute(player, key, ownedOrError)
+			logDebug(
+				"ownership refresh",
+				"player=" .. player.Name,
+				"userId=" .. tostring(player.UserId),
+				"key=" .. key,
+				"passId=" .. tostring(passId),
+				"owned=" .. tostring(ownedOrError)
+			)
 		else
 			setOwnershipAttribute(player, key, false)
 			warn(string.format("[Gamepasses] Failed ownership check for %s (%s): %s", player.Name, key, tostring(ownedOrError)))
@@ -104,6 +121,13 @@ function Gamepasses.init()
 
 	MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, gamePassId, wasPurchased)
 		local key = passIdToKey[gamePassId]
+		logDebug(
+			"purchase finished",
+			"player=" .. tostring(player and player.Name or "nil"),
+			"passId=" .. tostring(gamePassId),
+			"key=" .. tostring(key),
+			"wasPurchased=" .. tostring(wasPurchased)
+		)
 		if not key or not wasPurchased or not player then
 			return
 		end

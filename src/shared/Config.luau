@@ -32,8 +32,12 @@ local Config = {
 	CarryAnimationId = "rbxassetid://93613705528273",
 	SpecialBrainrotTransforms = {
 		["Tung Tung Sahur"] = {
-			carryCorrection = CFrame.Angles(0, math.rad(240), 0) * CFrame.Angles(0, 0, math.rad(180)) * CFrame.new(-0.8, 0, 0),
-			placedCorrection = CFrame.Angles(0, math.rad(240), 0) * CFrame.Angles(0, 0, math.rad(180)) * CFrame.new(-0.8, 0, 0),
+			carryCorrection = CFrame.Angles(0, math.rad(240), 0)
+				* CFrame.Angles(0, 0, math.rad(180))
+				* CFrame.new(-0.8, 0, 0),
+			placedCorrection = CFrame.Angles(0, math.rad(240), 0)
+				* CFrame.Angles(0, 0, math.rad(180))
+				* CFrame.new(-0.8, 0, 0),
 		},
 	},
 
@@ -50,12 +54,12 @@ local Config = {
 	ShopRingMaxVerticalDistance = 16,
 
 	--CannonShop
-	CannonCostScale = 1.10, -- cost multiplier per power level owned
+	CannonCostScale = 1.12, -- cost multiplier per power level owned
 	MaxCannonPower = 130, -- set to whatever cannon launch physics top-end is
 	CannonUpgradeCosts = {
-		{amount = 1,  cost = 1500},
-		{amount = 5,  cost = 6000},
-		{amount = 10, cost = 11000},
+		{ amount = 1, cost = 9000 },
+		{ amount = 5, cost = 45000 },
+		{ amount = 10, cost = 90000 },
 	},
 
 	MutationGoldChance = 0.08,

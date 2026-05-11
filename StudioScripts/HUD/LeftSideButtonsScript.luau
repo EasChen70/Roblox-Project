@@ -84,14 +84,8 @@ local function createSquareButton(name, text, imageId, position, bgColor, iconSc
 	return btn
 end
 
-local shopBtn = createSquareButton(
-	"Shop",
-	"SHOP",
-	"77580506639212",
-	UDim2.new(0.01, 0, 0.35, 0),
-	Color3.fromRGB(30, 35, 45),
-	0.80
-)
+local shopBtn =
+	createSquareButton("Shop", "SHOP", "77580506639212", UDim2.new(0.01, 0, 0.35, 0), Color3.fromRGB(30, 35, 45), 0.80)
 
 local rebirthBtn = createSquareButton(
 	"Rebirth",
@@ -106,12 +100,16 @@ local rebirthGuiOpen = false
 
 local function closeRebirthGui()
 	local existing = playerGui:FindFirstChild("RebirthPopupGui")
-	if existing then existing:Destroy() end
+	if existing then
+		existing:Destroy()
+	end
 	rebirthGuiOpen = false
 end
 
 local function openRebirthGui()
-	if rebirthGuiOpen then return end
+	if rebirthGuiOpen then
+		return
+	end
 	rebirthGuiOpen = true
 
 	local remotes = game.ReplicatedStorage:WaitForChild("RemoteEvents")
@@ -122,14 +120,14 @@ local function openRebirthGui()
 	local currentMult = player:GetAttribute("RebirthMultiplier") or 1.0
 
 	local requirements = {
-		{ rebirth = 1,  power = 20,  multiplier = 1.5 },
-		{ rebirth = 2,  power = 40,  multiplier = 2.0 },
-		{ rebirth = 3,  power = 60,  multiplier = 2.5 },
-		{ rebirth = 4,  power = 80,  multiplier = 3.0 },
-		{ rebirth = 5,  power = 90,  multiplier = 3.5 },
-		{ rebirth = 6,  power = 100, multiplier = 4.0 },
-		{ rebirth = 7,  power = 110, multiplier = 4.5 },
-		{ rebirth = 8,  power = 120, multiplier = 5.0 },
+		{ rebirth = 1, power = 20, multiplier = 1.5 },
+		{ rebirth = 2, power = 40, multiplier = 2.0 },
+		{ rebirth = 3, power = 60, multiplier = 2.5 },
+		{ rebirth = 4, power = 80, multiplier = 3.0 },
+		{ rebirth = 5, power = 90, multiplier = 3.5 },
+		{ rebirth = 6, power = 100, multiplier = 4.0 },
+		{ rebirth = 7, power = 110, multiplier = 4.5 },
+		{ rebirth = 8, power = 120, multiplier = 5.0 },
 	}
 
 	local nextReq = requirements[currentRebirths + 1]
@@ -331,9 +329,7 @@ local function openRebirthGui()
 	confirmBtn.Size = UDim2.fromScale(0.5, 0.12)
 	confirmBtn.Position = UDim2.fromScale(0.5, 0.85)
 	confirmBtn.AnchorPoint = Vector2.new(0.5, 0)
-	confirmBtn.BackgroundColor3 = canRebirth
-		and Color3.fromRGB(220, 180, 0)
-		or Color3.fromRGB(180, 40, 40)
+	confirmBtn.BackgroundColor3 = canRebirth and Color3.fromRGB(220, 180, 0) or Color3.fromRGB(180, 40, 40)
 	confirmBtn.Text = isMaxed and "MAXED" or "REBIRTH"
 	confirmBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	confirmBtn.Font = Enum.Font.DenkOne
@@ -355,19 +351,23 @@ local function openRebirthGui()
 		glowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		glowStroke.Parent = confirmBtn
 
-		TweenService:Create(glowStroke,
+		TweenService:Create(
+			glowStroke,
 			TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
 			{ Thickness = 8 }
 		):Play()
 
-		TweenService:Create(confirmBtn,
+		TweenService:Create(
+			confirmBtn,
 			TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
 			{ BackgroundColor3 = Color3.fromRGB(255, 215, 0) }
 		):Play()
 	end
 
 	confirmBtn.MouseButton1Click:Connect(function()
-		if not confirmBtn.Active then return end
+		if not confirmBtn.Active then
+			return
+		end
 		confirmBtn.Active = false
 		confirmBtn.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
 		confirmBtn.Text = "..."
