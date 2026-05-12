@@ -8,11 +8,159 @@ local Remotes = require(ReplicatedStorage.Remotes)
 local CannonShopClient = require(script.Parent.CannonShopClient)
 local CommunityRewardsClient = require(script.Parent.CommunityRewardsClient)
 local GamepassShopClient = require(script.Parent.GamepassShopClient)
+local OfflineRewardsClient = require(script.Parent.OfflineRewardsClient)
 local SellShopClient = require(script.Parent.SellShopClient)
 local TutorialClient = require(script.Parent.TutorialClient)
 local player = Players.LocalPlayer
 local myBaseId = nil
 local myBaseName = nil
+local cachedControls = nil
+local movementRecoveryToken = 0
+local DEBUG_MOVEMENT_RECOVERY = true
+local MOVEMENT_RECOVERY_DELAYS = { 0, 0.15, 0.5 }
+local zeroVector = Vector3.new(0, 0, 0)
+
+local function getDebugId(instance)
+	if not instance then
+		return "nil"
+	end
+
+	local ok, debugId = pcall(function()
+		return instance:GetDebugId()
+	end)
+
+	if ok then
+		return debugId
+	end
+
+	return instance.Name
+end
+
+local function logMovementRecovery(passIndex, character, humanoid, rootPart)
+	if not DEBUG_MOVEMENT_RECOVERY then
+		return
+	end
+
+	print(
+		string.format(
+			"[RespawnRecovery][Client] pass=%d/%d char=%s platformStand=%s walkSpeed=%s autoRotate=%s sit=%s state=%s anchored=%s",
+			passIndex,
+			#MOVEMENT_RECOVERY_DELAYS,
+			getDebugId(character),
+			tostring(humanoid and humanoid.PlatformStand),
+			tostring(humanoid and humanoid.WalkSpeed),
+			tostring(humanoid and humanoid.AutoRotate),
+			tostring(humanoid and humanoid.Sit),
+			tostring(humanoid and humanoid:GetState()),
+			tostring(rootPart and rootPart.Anchored)
+		)
+	)
+end
+
+local function getLocalControls(refreshCache)
+	if refreshCache then
+		cachedControls = nil
+	end
+
+	if cachedControls then
+		return cachedControls
+	end
+
+	local playerScripts = player:FindFirstChildOfClass("PlayerScripts")
+	if not playerScripts then
+		return nil
+	end
+
+	local playerModule = playerScripts:FindFirstChild("PlayerModule")
+	if not playerModule then
+		return nil
+	end
+
+	local ok, moduleOrErr = pcall(require, playerModule)
+	if not ok or type(moduleOrErr) ~= "table" or type(moduleOrErr.GetControls) ~= "function" then
+		return nil
+	end
+
+	local controlsOk, controls = pcall(function()
+		return moduleOrErr:GetControls()
+	end)
+	if not controlsOk then
+		return nil
+	end
+
+	cachedControls = controls
+	return cachedControls
+end
+
+local function forceEnableLocalControls(refreshCache, bounceControls)
+	local controls = getLocalControls(refreshCache)
+	if bounceControls and controls and type(controls.Disable) == "function" then
+		pcall(function()
+			controls:Disable()
+		end)
+		task.wait()
+		controls = getLocalControls(true)
+	end
+
+	if controls and type(controls.Enable) == "function" then
+		pcall(function()
+			controls:Enable()
+		end)
+	end
+end
+
+-- StarterPlayerScripts persist across respawns, so this can override stale
+-- immobilized state left behind by character-local scripts from the old body.
+local function recoverCharacterMovement(character)
+	cachedControls = nil
+	movementRecoveryToken += 1
+	local token = movementRecoveryToken
+
+	task.spawn(function()
+		local humanoid = character:WaitForChild("Humanoid", 5)
+		if not humanoid then
+			return
+		end
+
+		for passIndex, delaySeconds in ipairs(MOVEMENT_RECOVERY_DELAYS) do
+			local scheduledPassIndex = passIndex
+			local scheduledDelaySeconds = delaySeconds
+			task.delay(scheduledDelaySeconds, function()
+				if token ~= movementRecoveryToken or player.Character ~= character or not character.Parent or not humanoid.Parent then
+					return
+				end
+
+				local isFirstPass = scheduledPassIndex == 1
+				local isFinalPass = scheduledPassIndex == #MOVEMENT_RECOVERY_DELAYS
+
+				forceEnableLocalControls(true, isFirstPass)
+				humanoid.PlatformStand = false
+				humanoid.AutoRotate = true
+				humanoid.Jump = false
+				humanoid.Sit = false
+				humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+				humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+
+				local rootPart = character:FindFirstChild("HumanoidRootPart")
+				if rootPart then
+					rootPart.Anchored = false
+					if isFirstPass then
+						rootPart.AssemblyLinearVelocity = zeroVector
+						rootPart.AssemblyAngularVelocity = zeroVector
+					end
+				end
+
+				if isFirstPass then
+					humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+				elseif isFinalPass then
+					humanoid:ChangeState(Enum.HumanoidStateType.Running)
+				end
+
+				logMovementRecovery(scheduledPassIndex, character, humanoid, rootPart)
+			end)
+		end
+	end)
+end
 
 local function applyAssignedBase(baseId, baseName)
 	myBaseId = BaseIdentity.normalizeBaseId(baseId)
@@ -173,6 +321,11 @@ task.delay(2, function()
 	refreshYourBaseIndicator()
 end)
 
+player.CharacterAdded:Connect(recoverCharacterMovement)
+if player.Character then
+	recoverCharacterMovement(player.Character)
+end
+
 ProximityPromptService.PromptShown:Connect(function(prompt)
 	if prompt.ActionText ~= "Pick Up" and prompt.ActionText ~= "Sell" then
 		return
@@ -329,6 +482,7 @@ Remotes.MaxLevelGlow.OnClientEvent:Connect(function(model)
 		highlight:Destroy()
 	end)
 end)
+OfflineRewardsClient.start()
 CannonShopClient.start()
 CommunityRewardsClient.start()
 GamepassShopClient.start()

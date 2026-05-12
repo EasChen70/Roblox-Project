@@ -394,7 +394,7 @@ local function openShop()
 
 	local main = Instance.new("Frame")
 	main.Name = "Main"
-	main.Size = UDim2.fromScale(0.74, 0.76)
+	main.Size = UDim2.fromScale(0.55, 0.60)
 	main.Position = UDim2.fromScale(0.5, 0.5)
 	main.AnchorPoint = Vector2.new(0.5, 0.5)
 	main.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
@@ -411,8 +411,8 @@ local function openShop()
 
 	local header = Instance.new("Frame")
 	header.Name = "Header"
-	header.Size = UDim2.fromScale(1, 0.15)
-	header.BackgroundColor3 = Color3.fromRGB(40, 55, 80)
+	header.Size = UDim2.fromScale(1, 0.20)
+	header.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
 	header.BorderSizePixel = 0
 	header.Parent = main
 	createCorner(header, 16)
@@ -421,16 +421,16 @@ local function openShop()
 
 	local title = Instance.new("TextLabel")
 	title.Name = "Title"
-	title.Size = UDim2.fromScale(0.5, 0.52)
+	title.Size = UDim2.fromScale(0.6, 0.72)
 	title.Position = UDim2.fromScale(0.05, 0.14)
 	title.BackgroundTransparency = 1
-	title.Text = "STORE"
+	title.Text = "Shop"
 	title.TextColor3 = Color3.fromRGB(255, 255, 255)
 	title.Font = Enum.Font.DenkOne
 	title.TextScaled = true
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Parent = header
-	constrainText(title, 20, 38)
+	constrainText(title, 20, 50)
 	createTextStroke(title, 4)
 
 	local closeButton = Instance.new("TextButton")
@@ -447,7 +447,7 @@ local function openShop()
 	closeButton.Parent = header
 	createCorner(closeButton, 8)
 	createStroke(closeButton, Color3.fromRGB(255, 255, 255), 3)
-	constrainText(closeButton, 14, 30)
+	constrainText(closeButton, 20, 40)
 	closeButton.MouseButton1Click:Connect(closeShop)
 
 	local body = Instance.new("ScrollingFrame")

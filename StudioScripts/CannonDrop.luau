@@ -9,7 +9,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 local cannonGui = playerGui:WaitForChild("CannonGui")
 local landButton = cannonGui:WaitForChild("LandButton")
 
-local DEBUG_CANNON = true
+local DEBUG_CANNON = false
 local DEBUG_SAMPLE_INTERVAL = 0.25
 local DEBUG_SAMPLE_DURATION = 3
 
@@ -21,9 +21,9 @@ local isFlightSessionActive = false
 local sessionToken = 0
 local controlsDisabled = false
 local flightSampleToken = 0
-local cachedControls = nil
 local cachedLocomotion = nil
 local prepLocomotionLocked = false
+local sessionEndedByDeath = false
 local zeroVector = Vector3.new(0, 0, 0)
 local DROP_FORCE = -150
 
@@ -116,10 +116,6 @@ local function setCharacterCanCollide(state)
 end
 
 local function getLocalControls()
-	if cachedControls then
-		return cachedControls
-	end
-
 	local playerScripts = player:FindFirstChildOfClass("PlayerScripts")
 	if not playerScripts then
 		return nil
@@ -142,8 +138,11 @@ local function getLocalControls()
 		return nil
 	end
 
-	cachedControls = controls
-	return cachedControls
+	return controls
+end
+
+local function isHumanoidAlive()
+	return hum.Parent ~= nil and hum.Health > 0 and hum:GetState() ~= Enum.HumanoidStateType.Dead
 end
 
 local function disableLocalControls()
@@ -160,8 +159,8 @@ local function disableLocalControls()
 	end
 end
 
-local function enableLocalControls()
-	if not controlsDisabled then
+local function enableLocalControls(forceEnable)
+	if not forceEnable and not controlsDisabled then
 		return
 	end
 
@@ -176,6 +175,10 @@ local function enableLocalControls()
 end
 
 local function clearLocalMovementIntent()
+	if not isHumanoidAlive() then
+		return
+	end
+
 	hum.Jump = false
 	pcall(function()
 		hum:Move(zeroVector, true)
@@ -183,6 +186,10 @@ local function clearLocalMovementIntent()
 end
 
 local function applyPrepLocomotionLock()
+	if not isHumanoidAlive() then
+		return
+	end
+
 	if not prepLocomotionLocked then
 		cachedLocomotion = {
 			walkSpeed = hum.WalkSpeed,
@@ -200,8 +207,18 @@ local function applyPrepLocomotionLock()
 	end
 end
 
+local function clearPrepLocomotionState()
+	cachedLocomotion = nil
+	prepLocomotionLocked = false
+end
+
 local function restorePrepLocomotion()
 	if not prepLocomotionLocked then
+		return
+	end
+
+	if not isHumanoidAlive() then
+		clearPrepLocomotionState()
 		return
 	end
 
@@ -211,8 +228,7 @@ local function restorePrepLocomotion()
 		hum.JumpHeight = cachedLocomotion.jumpHeight
 	end
 
-	cachedLocomotion = nil
-	prepLocomotionLocked = false
+	clearPrepLocomotionState()
 end
 
 local function startPrepareLockLoop(activeSessionToken)
@@ -220,22 +236,41 @@ local function startPrepareLockLoop(activeSessionToken)
 		while isPreparing and sessionToken == activeSessionToken do
 			applyPrepLocomotionLock()
 			clearLocalMovementIntent()
-			hrp.AssemblyAngularVelocity = zeroVector
+			if hrp.Parent then
+				hrp.AssemblyAngularVelocity = zeroVector
+			end
 			RunService.RenderStepped:Wait()
 		end
 	end)
 end
 
 local function forceUpright()
+	if not isHumanoidAlive() then
+		return
+	end
+
 	hum.PlatformStand = false
 	hum.Jump = false
 	hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-	hrp.AssemblyAngularVelocity = zeroVector
+	if hrp.Parent then
+		hrp.AssemblyAngularVelocity = zeroVector
+	end
 end
 
 local function freezeMomentum()
-	hrp.AssemblyLinearVelocity = zeroVector
-	hum:ChangeState(Enum.HumanoidStateType.Landed)
+	if not isHumanoidAlive() then
+		return
+	end
+
+	if hrp.Parent then
+		hrp.Anchored = false
+		hrp.AssemblyLinearVelocity = zeroVector
+		hrp.AssemblyAngularVelocity = zeroVector
+	end
+
+	if hum.Parent then
+		hum:ChangeState(Enum.HumanoidStateType.Landed)
+	end
 end
 
 local function beginCannonSession()
@@ -245,6 +280,7 @@ local function beginCannonSession()
 	isFlightSessionActive = true
 	canDrop = false
 	isDescending = false
+	sessionEndedByDeath = false
 	return sessionToken
 end
 
@@ -257,23 +293,63 @@ local function clearCannonSessionState()
 	isDescending = false
 end
 
+local function restoreCharacterMovement(shouldFreezeMomentum)
+	enableLocalControls(true)
+	setLandButtonVisible(false)
+
+	if char.Parent then
+		setCharacterCanCollide(true)
+	end
+
+	if not isHumanoidAlive() then
+		return
+	end
+
+	if hum.Parent then
+		hum.AutoRotate = true
+		hum.PlatformStand = false
+		hum.Jump = false
+		hum.Sit = false
+		hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+		hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+		pcall(function()
+			hum:Move(zeroVector, true)
+		end)
+	end
+
+	if hrp.Parent then
+		hrp.Anchored = false
+		hrp.AssemblyLinearVelocity = zeroVector
+		hrp.AssemblyAngularVelocity = zeroVector
+	end
+
+	if shouldFreezeMomentum then
+		freezeMomentum()
+	elseif hum.Parent then
+		hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+	end
+end
+
 local function cleanupCannonSession(context, shouldFreezeMomentum)
 	clearCannonSessionState()
 	restorePrepLocomotion()
-	enableLocalControls()
-	hum.AutoRotate = true
-	setCharacterCanCollide(true)
-	hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
-	hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+	restoreCharacterMovement(shouldFreezeMomentum)
+end
+
+local function cleanupDeadCannonSession(context)
+	sessionEndedByDeath = true
+	clearCannonSessionState()
+	clearPrepLocomotionState()
+	enableLocalControls(true)
 	setLandButtonVisible(false)
-	forceUpright()
-	if shouldFreezeMomentum then
-		freezeMomentum()
+
+	if char.Parent then
+		setCharacterCanCollide(true)
 	end
 end
 
 local function triggerLanding(reason)
-	if not canDrop then
+	if not canDrop or not isHumanoidAlive() then
 		return
 	end
 
@@ -294,10 +370,44 @@ local function triggerLanding(reason)
 end
 
 styleButton()
+restoreCharacterMovement(false)
 
 landButton.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		triggerLanding("button_input")
+	end
+end)
+
+local function shouldForceCleanup()
+	return controlsDisabled or prepLocomotionLocked or isCannonSessionActive()
+end
+
+hum.Died:Connect(function()
+	if shouldForceCleanup() then
+		logCannon(currentLaunchId, "Humanoid died - forcing cannon cleanup")
+		cleanupDeadCannonSession("died")
+	end
+end)
+
+char.AncestryChanged:Connect(function(_, parent)
+	if not parent and shouldForceCleanup() then
+		logCannon(currentLaunchId, "Character removed - forcing cannon cleanup")
+		if sessionEndedByDeath or not isHumanoidAlive() then
+			cleanupDeadCannonSession("character_removed")
+		else
+			cleanupCannonSession("character_removed", false)
+		end
+	end
+end)
+
+script.AncestryChanged:Connect(function(_, parent)
+	if not parent and shouldForceCleanup() then
+		logCannon(currentLaunchId, "Script removed - forcing cannon cleanup")
+		if sessionEndedByDeath or not isHumanoidAlive() then
+			cleanupDeadCannonSession("script_removed")
+		else
+			cleanupCannonSession("script_removed", false)
+		end
 	end
 end)
 
@@ -306,6 +416,11 @@ landButton.MouseButton1Click:Connect(function()
 end)
 
 Remotes.CannonDropEvent.OnClientEvent:Connect(function(mode, velocity)
+	if sessionEndedByDeath and mode ~= "Prepare" then
+		logCannon(currentLaunchId, "Ignored cannon event after death cleanup", "mode=" .. tostring(mode))
+		return
+	end
+
 	if mode == "Prepare" then
 		local newSessionToken = beginCannonSession()
 		logCannon(
@@ -408,6 +523,11 @@ hum:GetPropertyChangedSignal("SeatPart"):Connect(function()
 end)
 
 hum.StateChanged:Connect(function(_, newState)
+	if sessionEndedByDeath and newState == Enum.HumanoidStateType.Landed then
+		logCannon(currentLaunchId, "Ignored landed state after death cleanup")
+		return
+	end
+
 	if newState == Enum.HumanoidStateType.Landed then
 		if not isFlightSessionActive then
 			return

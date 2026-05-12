@@ -11,10 +11,12 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local Config = require(ReplicatedStorage.Config)
 local Brainrots = require(ReplicatedStorage.Brainrots)
 local BrainrotUI = require(ReplicatedStorage.BrainrotUI)
+local Remotes = require(ReplicatedStorage.Remotes)
 local Util = require(ReplicatedStorage.Util)
 
 --Server Systems
 local Base = require(ServerScriptService.Base)
+local Gamepasses = require(ServerScriptService.Gamepasses)
 local Pickup = require(ServerScriptService.Pickup)
 local Placement = require(ServerScriptService.Placement)
 
@@ -23,7 +25,7 @@ local PlayerData = {}
 -----CONFIG/CONSTANTS-----
 local DATA_STORE_NAME = "BrainrotCannonV1"
 
-local CURRENT_VERSION = 7 -- bumped from 6 to 7 for wheel spin time persistence
+local CURRENT_VERSION = 8 -- bumped from 7 to 8 for offline income persistence
 
 local LOCK_EXPIRY = 60
 local LOCK_REFRESH = 20
@@ -162,6 +164,13 @@ migrations[7] = function(data)
 	data.lastSpinTime = data.lastSpinTime or 0
 	return data
 end
+
+-- Migration v7 -> v8: initialize offline income tracking without retroactive backpay
+migrations[8] = function(data)
+	data.lastIncomeTimestamp = os.time()
+	data.doubleCashOwned = data.doubleCashOwned == true
+	return data
+end
 -----HELPERS-----
 
 local function createDefault()
@@ -177,6 +186,8 @@ local function createDefault()
 		tutorialStepFlags = {},
 		communityRewardClaimed = false,
 		lastSpinTime = 0,
+		lastIncomeTimestamp = os.time(),
+		doubleCashOwned = false,
 	}
 end
 
@@ -222,7 +233,9 @@ local function retryAsync(func)
 	return false, nil
 end
 
-local function getIncomeFromRegistry(name)
+local getIncomeFromRegistry
+
+getIncomeFromRegistry = function(name)
 	for _, entry in ipairs(Brainrots) do
 		if entry.name == name then
 			return entry.incomePerSec
@@ -298,6 +311,58 @@ local function clearLockOwner(data)
 	data.lockTimestamp = nil
 end
 
+local function applyOfflineIncome(data, gamepassOwnership)
+	local now = os.time()
+	local previousTimestamp = data.lastIncomeTimestamp or now
+	local offlineSeconds = math.max(0, math.min(Config.OfflineIncomeCapSeconds, now - previousTimestamp))
+	local doubleCashResolved = gamepassOwnership
+		and gamepassOwnership.resolved
+		and gamepassOwnership.resolved.DoubleCash == true
+	local doubleCashOwned = if doubleCashResolved
+		then gamepassOwnership.ownership.DoubleCash == true
+		else data.doubleCashOwned == true
+	local totalAmount = 0
+	local slotCount = 0
+
+	if Config.OfflineIncomeEnabled and offlineSeconds > 0 then
+		local totalMultiplier = data.rebirthMultiplier or Config.RebirthBaseMultiplier
+		if doubleCashOwned then
+			totalMultiplier *= Config.GamepassValues.DoubleCashMultiplier
+		end
+
+		for _, slotData in pairs(data.slots or {}) do
+			local level = slotData.level or 1
+			local mutation = slotData.mutation or "None"
+			local baseIncome = getIncomeFromRegistry(slotData.name)
+			local incomePerSec = Brainrots.getIncomeWithMutation(baseIncome, slotData.rarity, level, mutation)
+			local effectiveIncomePerSec = math.floor(incomePerSec * totalMultiplier)
+			if effectiveIncomePerSec > 0 then
+				local awardedAmount = effectiveIncomePerSec * offlineSeconds
+				slotData.accumulatedCash = (slotData.accumulatedCash or 0) + awardedAmount
+				totalAmount += awardedAmount
+				slotCount += 1
+			end
+		end
+	else
+		offlineSeconds = 0
+	end
+
+	data.lastIncomeTimestamp = now
+	if doubleCashResolved then
+		data.doubleCashOwned = gamepassOwnership.ownership.DoubleCash == true
+	else
+		data.doubleCashOwned = data.doubleCashOwned == true
+	end
+
+	return {
+		totalAmount = totalAmount,
+		offlineSeconds = offlineSeconds,
+		slotCount = slotCount,
+		doubleCashResolved = doubleCashResolved,
+		doubleCashOwned = doubleCashOwned,
+	}
+end
+
 -----READ CURRENT GAME STATE-----
 
 local function readSlots(player)
@@ -350,6 +415,8 @@ local function readLiveState(player, data)
 		data.cannonPower = player:GetAttribute("CannonPower") or 1
 		data.rebirthMultiplier = player:GetAttribute("RebirthMultiplier") or Config.RebirthBaseMultiplier
 		data.lastSpinTime = player:GetAttribute("LastSpinTime") or 0
+		data.lastIncomeTimestamp = os.time()
+		data.doubleCashOwned = player:GetAttribute("HasDoubleCash") == true
 	end
 
 	data.slots = readSlots(player)
@@ -401,6 +468,8 @@ local function clonePersistedData(data)
 		tutorialStepFlags = cloneCompletedFlags(data.tutorialStepFlags),
 		communityRewardClaimed = data.communityRewardClaimed == true,
 		lastSpinTime = data.lastSpinTime or 0,
+		lastIncomeTimestamp = data.lastIncomeTimestamp or os.time(),
+		doubleCashOwned = data.doubleCashOwned == true,
 	}
 end
 
@@ -654,7 +723,10 @@ function PlayerData.load(player)
 	end
 
 	local wasLocked = false
+	local migrationFailed = false
 	local loadedData = nil
+	local offlineAwardPayload = nil
+	local gamepassOwnership = Gamepasses.refreshOwnershipNow(player)
 
 	local success = retryAsync(function()
 		dataStore:UpdateAsync(key, function(current)
@@ -666,7 +738,13 @@ function PlayerData.load(player)
 				end
 			end
 
-			local data = current or createDefault()
+			local data = runMigrations(current or createDefault())
+			if not data then
+				migrationFailed = true
+				return nil
+			end
+
+			offlineAwardPayload = applyOfflineIncome(data, gamepassOwnership)
 
 			setLockOwner(data)
 
@@ -679,14 +757,13 @@ function PlayerData.load(player)
 		end
 	end)
 
-	if not success or not loadedData then
-		player:Kick("Data locked — rejoin")
+	if migrationFailed then
+		player:Kick("Version mismatch")
 		return
 	end
 
-	loadedData = runMigrations(loadedData)
-	if not loadedData then
-		player:Kick("Version mismatch")
+	if not success or not loadedData then
+		player:Kick("Data locked — rejoin")
 		return
 	end
 
@@ -711,6 +788,10 @@ function PlayerData.load(player)
 	player:SetAttribute("CannonPower", loadedData.cannonPower or 1)
 	player:SetAttribute("RebirthMultiplier", loadedData.rebirthMultiplier or Config.RebirthBaseMultiplier)
 	player:SetAttribute("LastSpinTime", loadedData.lastSpinTime or 0)
+	if not (gamepassOwnership.resolved and gamepassOwnership.resolved.DoubleCash == true)
+		and loadedData.doubleCashOwned == true then
+		player:SetAttribute("HasDoubleCash", true)
+	end
 
 	print(
 		"[PlayerData] Loaded",
@@ -774,6 +855,33 @@ function PlayerData.load(player)
 				warn("[PlayerData] onLoaded callback failed for", player.Name, err)
 			end
 		end)
+	end
+
+	if offlineAwardPayload and offlineAwardPayload.totalAmount > 0 then
+		print(
+			"[PlayerData] Offline award",
+			player.Name,
+			"amount=" .. tostring(offlineAwardPayload.totalAmount),
+			"formatted=" .. Util.formatMoney(offlineAwardPayload.totalAmount),
+			"seconds=" .. tostring(offlineAwardPayload.offlineSeconds),
+			"slots=" .. tostring(offlineAwardPayload.slotCount),
+			"doubleCash=" .. tostring(offlineAwardPayload.doubleCashOwned),
+			"resolved=" .. tostring(offlineAwardPayload.doubleCashResolved)
+		)
+
+		if Config.OfflineIncomePopupEnabled then
+			local popupPayload = {
+				totalAmount = offlineAwardPayload.totalAmount,
+				offlineSeconds = offlineAwardPayload.offlineSeconds,
+				slotCount = offlineAwardPayload.slotCount,
+			}
+
+			task.delay(2, function()
+				if player.Parent then
+					Remotes.OfflineEarningsAwarded:FireClient(player, popupPayload)
+				end
+			end)
+		end
 	end
 end
 

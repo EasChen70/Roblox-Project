@@ -6,6 +6,10 @@ local Config = {
 	MaxPlayers = 5,
 	DefaultWalkSpeed = 18,
 	IncomeTickRate = 1,
+	OfflineIncomeEnabled = true,
+	OfflineIncomePopupEnabled = true,
+	OfflineIncomeCapSeconds = 4 * 60 * 60,
+	LoadingScreenImageId = "rbxassetid://138164703256133",
 	PlacementYOffset = -0.5,
 	UpgradeSoundId = "rbxassetid://76834925120308",
 	Gamepasses = {
@@ -54,12 +58,12 @@ local Config = {
 	ShopRingMaxVerticalDistance = 16,
 
 	--CannonShop
-	CannonCostScale = 1.12, -- cost multiplier per power level owned
+	CannonCostScale = 1.15, -- cost multiplier per power level owned
 	MaxCannonPower = 130, -- set to whatever cannon launch physics top-end is
 	CannonUpgradeCosts = {
-		{ amount = 1, cost = 9000 },
-		{ amount = 5, cost = 45000 },
-		{ amount = 10, cost = 90000 },
+		{ amount = 1, cost = 11000 },
+		{ amount = 5, cost = 55000 },
+		{ amount = 10, cost = 110000 },
 	},
 
 	MutationGoldChance = 0.08,

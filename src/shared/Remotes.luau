@@ -6,46 +6,48 @@ local RunService = game:GetService("RunService")
 local Remotes = {}
 
 local remoteNames = {
-	"BaseAssigned",
-	"CollectSlot",
-	"TeleportHomeEvent",
-	"TeleportSellRequest",
-	"TeleportRequest",
-	"UpgradeCannon",
-	"GrabStateChanged",
-	"DropBrainrot",
-	"UpgradeSound",
-	"MaxLevelGlow",
-	"Rebirth",
-	"CannonDropEvent",
-	"SetFlightCollision",
-	"SellInventoryItem",
-	"SellAllInventoryItems",
-	"TutorialStepChanged",
-	"TutorialSkipRequested",
-	"CommunityClaimRequest",
-	"CommunityClaimResult",
-	"SpinWheel",
+    "BaseAssigned",
+    "CollectSlot",
+    "TeleportHomeEvent",
+    "TeleportSellRequest",
+    "TeleportRequest",
+    "UpgradeCannon",
+    "GrabStateChanged",
+    "DropBrainrot",
+    "UpgradeSound",
+    "MaxLevelGlow",
+    "Rebirth",
+    "CannonDropEvent",
+    "SetFlightCollision",
+    "SellInventoryItem",
+    "SellAllInventoryItems",
+    "TutorialStepChanged",
+    "TutorialSkipRequested",
+    "CommunityClaimRequest",
+    "CommunityClaimResult",
+    "SpinWheel",
+    "ClaimTimedReward",
+    "OfflineEarningsAwarded",
 }
 if RunService:IsServer() then
-	-- Server creates the folder and remotes
-	local folder = Instance.new("Folder")
-	folder.Name = "RemoteEvents"
-	folder.Parent = ReplicatedStorage
+    -- Server creates the folder and remotes
+    local folder = Instance.new("Folder")
+    folder.Name = "RemoteEvents"
+    folder.Parent = ReplicatedStorage
 
-	for _, name in ipairs(remoteNames) do
-		local remote = Instance.new("RemoteEvent")
-		remote.Name = name
-		remote.Parent = folder
-		Remotes[name] = remote
-	end
+    for _, name in ipairs(remoteNames) do
+        local remote = Instance.new("RemoteEvent")
+        remote.Name = name
+        remote.Parent = folder
+        Remotes[name] = remote
+    end
 else
-	-- Client waits for them to exist
-	local folder = ReplicatedStorage:WaitForChild("RemoteEvents")
+    -- Client waits for them to exist
+    local folder = ReplicatedStorage:WaitForChild("RemoteEvents")
 
-	for _, name in ipairs(remoteNames) do
-		Remotes[name] = folder:WaitForChild(name)
-	end
+    for _, name in ipairs(remoteNames) do
+        Remotes[name] = folder:WaitForChild(name)
+    end
 end
 
 return Remotes
