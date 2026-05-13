@@ -387,10 +387,9 @@ local function openShop()
 	backdrop.AutoButtonColor = false
 	backdrop.Size = UDim2.fromScale(1, 1)
 	backdrop.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	backdrop.BackgroundTransparency = 0.42
+	backdrop.BackgroundTransparency = 1
 	backdrop.BorderSizePixel = 0
 	backdrop.Parent = screen
-	backdrop.MouseButton1Click:Connect(closeShop)
 
 	local main = Instance.new("Frame")
 	main.Name = "Main"

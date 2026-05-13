@@ -56,6 +56,7 @@ local BASE_BANNER_WIDTH = 430
 local BASE_BANNER_HEIGHT = 30
 local BANNER_TOP_MARGIN = 4
 local BANNER_VIEWPORT_WIDTH_RATIO = 0.88
+local TUTORIAL_BANNER_SCALE_MULTIPLIER = 1.2
 
 local BaseContext = {
 	baseId = nil,
@@ -1549,11 +1550,13 @@ function TutorialGui.updateBannerScale()
 	local camera = Workspace.CurrentCamera
 	local viewportWidth = camera and camera.ViewportSize.X or 0
 	if viewportWidth <= 0 then
-		topRowScale.Scale = 1
+		topRowScale.Scale = TUTORIAL_BANNER_SCALE_MULTIPLIER
 		return
 	end
 
-	topRowScale.Scale = math.min(1, (viewportWidth * BANNER_VIEWPORT_WIDTH_RATIO) / BASE_BANNER_WIDTH)
+	local effectiveBannerWidth = BASE_BANNER_WIDTH * TUTORIAL_BANNER_SCALE_MULTIPLIER
+	local viewportScale = math.min(1, (viewportWidth * BANNER_VIEWPORT_WIDTH_RATIO) / effectiveBannerWidth)
+	topRowScale.Scale = viewportScale * TUTORIAL_BANNER_SCALE_MULTIPLIER
 end
 
 function TutorialGui.bindBannerScale()
@@ -1657,7 +1660,7 @@ function TutorialGui.ensureGui()
 
 	local rightMeta = Instance.new("Frame")
 	rightMeta.Name = "RightMeta"
-	rightMeta.Size = UDim2.fromOffset(58, 18)
+	rightMeta.Size = UDim2.fromOffset(64, 18)
 	rightMeta.Position = UDim2.new(1, -8, 0.5, 0)
 	rightMeta.AnchorPoint = Vector2.new(1, 0.5)
 	rightMeta.BackgroundTransparency = 1
@@ -1672,7 +1675,7 @@ function TutorialGui.ensureGui()
 
 	skipButton = Instance.new("TextButton")
 	skipButton.Name = "SkipButton"
-	skipButton.Size = UDim2.fromOffset(30, 16)
+	skipButton.Size = UDim2.fromOffset(36, 18)
 	skipButton.Position = UDim2.fromScale(1, 0.5)
 	skipButton.AnchorPoint = Vector2.new(1, 0.5)
 	skipButton.BackgroundTransparency = 1
@@ -1682,7 +1685,7 @@ function TutorialGui.ensureGui()
 	skipButton.TextScaled = true
 	skipButton.Visible = false
 	skipButton.Parent = rightMeta
-	addTextSizeConstraint(skipButton, 14, 18)
+	addTextSizeConstraint(skipButton, 15, 20)
 
 	local skipTextStroke = Instance.new("UIStroke")
 	skipTextStroke.Color = Color3.fromRGB(0, 0, 0)
@@ -1691,7 +1694,7 @@ function TutorialGui.ensureGui()
 
 	confirmFrame = Instance.new("Frame")
 	confirmFrame.Name = "ConfirmFrame"
-	confirmFrame.Size = UDim2.fromOffset(132, 16)
+	confirmFrame.Size = UDim2.fromOffset(138, 18)
 	confirmFrame.Position = UDim2.new(1, -8, 1, 1)
 	confirmFrame.AnchorPoint = Vector2.new(1, 0)
 	confirmFrame.BackgroundTransparency = 1
@@ -1701,16 +1704,16 @@ function TutorialGui.ensureGui()
 
 	local confirmLabel = createOutlinedLabel(confirmFrame, "Skip tutorial?", Enum.Font.DenkOne, Color3.fromRGB(255, 255, 255))
 	confirmLabel.Name = "ConfirmLabel"
-	confirmLabel.Size = UDim2.fromOffset(74, 16)
+	confirmLabel.Size = UDim2.fromOffset(82, 18)
 	confirmLabel.Position = UDim2.new(0, 0, 0, 0)
 	confirmLabel.AnchorPoint = Vector2.new(0, 0)
 	confirmLabel.TextXAlignment = Enum.TextXAlignment.Right
-	addTextSizeConstraint(confirmLabel, 9, 12)
+	addTextSizeConstraint(confirmLabel, 10, 13)
 
 	local confirmYes = Instance.new("TextButton")
 	confirmYes.Name = "ConfirmYes"
-	confirmYes.Size = UDim2.fromOffset(24, 16)
-	confirmYes.Position = UDim2.fromOffset(84, 0)
+	confirmYes.Size = UDim2.fromOffset(24, 18)
+	confirmYes.Position = UDim2.fromOffset(92, 0)
 	confirmYes.AnchorPoint = Vector2.new(0, 0)
 	confirmYes.BackgroundTransparency = 1
 	confirmYes.Text = "Yes"
@@ -1727,8 +1730,8 @@ function TutorialGui.ensureGui()
 
 	local confirmNo = Instance.new("TextButton")
 	confirmNo.Name = "ConfirmNo"
-	confirmNo.Size = UDim2.fromOffset(18, 16)
-	confirmNo.Position = UDim2.fromOffset(112, 0)
+	confirmNo.Size = UDim2.fromOffset(18, 18)
+	confirmNo.Position = UDim2.fromOffset(120, 0)
 	confirmNo.AnchorPoint = Vector2.new(0, 0)
 	confirmNo.BackgroundTransparency = 1
 	confirmNo.Text = "No"

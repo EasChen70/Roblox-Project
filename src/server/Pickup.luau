@@ -16,6 +16,8 @@ local equipped = {} -- player → Tool (currently equipped, tracked server-side)
 local carryTracks = {} -- player → AnimationTrack
 local inventorySnapshot = {} -- respawn restore
 local sellLocks = {} -- tool → true while a sell request is being processed
+local giftReservationsByTool = {} -- tool → { owner = Player, itemData = table }
+local reservedGiftToolByPlayer = {} -- player → Tool
 
 local worldClaims = {}
 local worldClaimDestroyConnections = {}
@@ -249,6 +251,14 @@ function Pickup.getInventory(player)
 	return inventory[player] or {}
 end
 
+function Pickup.getInventoryCount(player)
+	return #(inventory[player] or {})
+end
+
+function Pickup.hasInventorySpace(player)
+	return Pickup.getInventoryCount(player) < Config.MaxInventory
+end
+
 function Pickup.getInventoryTool(player)
 	return equipped[player]
 end
@@ -292,6 +302,42 @@ local function isInventoryToolOwnedByPlayer(player, tool)
 	end
 
 	return false
+end
+
+local function getToolItemData(tool)
+	if typeof(tool) ~= "Instance" or not tool:IsA("Tool") then
+		return nil
+	end
+
+	return {
+		name = tool.Name,
+		rarity = tool:GetAttribute("Rarity"),
+		baseIncome = resolveBaseIncome(tool.Name, tool:GetAttribute("BaseIncome"), tool:GetAttribute("IncomePerSec")),
+		level = tool:GetAttribute("Level") or 1,
+		mutation = tool:GetAttribute("Mutation") or "None",
+	}
+end
+
+local function isGiftReservedTool(tool)
+	return giftReservationsByTool[tool] ~= nil
+end
+
+local function clearGiftReservation(tool)
+	local reservation = giftReservationsByTool[tool]
+	if not reservation then
+		return nil
+	end
+
+	giftReservationsByTool[tool] = nil
+	if reservedGiftToolByPlayer[reservation.owner] == tool then
+		reservedGiftToolByPlayer[reservation.owner] = nil
+	end
+
+	if typeof(tool) == "Instance" and tool:IsA("Tool") then
+		tool:SetAttribute("GiftReserved", false)
+	end
+
+	return reservation
 end
 
 local function getInventorySellValue(tool)
@@ -355,6 +401,7 @@ local function createBrainrotTool(player, data)
 	tool:SetAttribute("IncomePerSec", currentIncome)
 	tool:SetAttribute("Level", level)
 	tool:SetAttribute("BrainrotTool", true)
+	tool:SetAttribute("GiftReserved", false)
 	tool:SetAttribute("Mutation", mutation)
 
 	local handle = Instance.new("Part")
@@ -395,6 +442,15 @@ local function createBrainrotTool(player, data)
 			return
 		end
 		-- [[ ADDITION END ]] --
+		if isGiftReservedTool(tool) then
+			task.defer(function()
+				if isGiftReservedTool(tool) then
+					forceUnequip(player)
+				end
+			end)
+			return
+		end
+
 		equipped[player] = tool
 
 		local character = player.Character
@@ -526,8 +582,7 @@ end
 
 function Pickup.giveItem(player, name, rarity, baseIncome, level, mutation)
 	mutation = mutation or "None"
-	local items = inventory[player]
-	if items and #items >= Config.MaxInventory then
+	if not Pickup.hasInventorySpace(player) then
 		return false
 	end
 
@@ -548,9 +603,74 @@ function Pickup.giveItem(player, name, rarity, baseIncome, level, mutation)
 	return true
 end
 
+function Pickup.reserveEquippedToolForGift(player)
+	local tool = equipped[player]
+	if not isInventoryToolOwnedByPlayer(player, tool) then
+		return nil, nil, "no_equipped_item"
+	end
+
+	if reservedGiftToolByPlayer[player] ~= nil or isGiftReservedTool(tool) then
+		return nil, nil, "already_reserved"
+	end
+
+	local itemData = getToolItemData(tool)
+	if not itemData or not itemData.rarity then
+		return nil, nil, "invalid_item"
+	end
+
+	giftReservationsByTool[tool] = {
+		owner = player,
+		itemData = itemData,
+	}
+	reservedGiftToolByPlayer[player] = tool
+	tool:SetAttribute("GiftReserved", true)
+
+	cleanupEquippedToolState(player, tool)
+
+	return tool, itemData
+end
+
+function Pickup.releaseGiftReservation(player, expectedTool)
+	local tool = reservedGiftToolByPlayer[player]
+	if not tool then
+		return false
+	end
+	if expectedTool and tool ~= expectedTool then
+		return false
+	end
+
+	clearGiftReservation(tool)
+	return true
+end
+
+function Pickup.consumeReservedGiftTool(player, expectedTool)
+	local tool = reservedGiftToolByPlayer[player]
+	if not tool then
+		return nil, "not_reserved"
+	end
+	if expectedTool and tool ~= expectedTool then
+		return nil, "reservation_mismatch"
+	end
+
+	local reservation = clearGiftReservation(tool)
+	local itemData = reservation and reservation.itemData or getToolItemData(tool)
+	if not isInventoryToolOwnedByPlayer(player, tool) then
+		return itemData, "tool_missing"
+	end
+
+	cleanupEquippedToolState(player, tool)
+	Pickup.removeFromInventory(player, tool)
+	tool:Destroy()
+
+	return itemData, "ok"
+end
+
 -- NEW Sell shop
 function Pickup.sellInventoryTool(player, tool)
 	if not isInventoryToolOwnedByPlayer(player, tool) then
+		return 0
+	end
+	if isGiftReservedTool(tool) then
 		return 0
 	end
 	if sellLocks[tool] then
@@ -956,6 +1076,11 @@ Remotes.DropBrainrot.OnServerEvent:Connect(function(player)
 end)
 
 function Pickup.cleanup(player)
+	local reservedTool = reservedGiftToolByPlayer[player]
+	if reservedTool then
+		clearGiftReservation(reservedTool)
+	end
+
 	local carriedModel = carrying[player]
 	if isWorldCarryModel(carriedModel) then
 		releaseWorldClaim(carriedModel)

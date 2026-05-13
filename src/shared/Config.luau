@@ -34,6 +34,10 @@ local Config = {
 	CarryOffset = Vector3.new(0, 3, 0),
 	CarryRotation = CFrame.Angles(0, math.rad(180), 0),
 	CarryAnimationId = "rbxassetid://93613705528273",
+	GiftHoldDuration = 0.6,
+	GiftRange = 8,
+	GiftPromptHeight = 2.5,
+	GiftRequestTimeout = 10,
 	SpecialBrainrotTransforms = {
 		["Tung Tung Sahur"] = {
 			carryCorrection = CFrame.Angles(0, math.rad(240), 0)
@@ -66,8 +70,8 @@ local Config = {
 		{ amount = 10, cost = 110000 },
 	},
 
-	MutationGoldChance = 0.08,
-	MutationDiamondChance = 0.04,
+	MutationGoldChance = 0.05,
+	MutationDiamondChance = 0.025,
 	MutationMultipliers = {
 		None = 1.0,
 		Gold = 1.5,

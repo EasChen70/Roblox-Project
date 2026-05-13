@@ -66,7 +66,7 @@ local function getBackpack()
 end
 
 local function isEligibleTool(tool)
-	return tool:IsA("Tool") and tool:GetAttribute("BrainrotTool") == true
+	return tool:IsA("Tool") and tool:GetAttribute("BrainrotTool") == true and tool:GetAttribute("GiftReserved") ~= true
 end
 
 local function getRegistryBaseIncome(name)

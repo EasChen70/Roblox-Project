@@ -28,6 +28,8 @@ local remoteNames = {
     "SpinWheel",
     "ClaimTimedReward",
     "OfflineEarningsAwarded",
+    "GiftDecision",
+    "GiftResult",
 }
 if RunService:IsServer() then
     -- Server creates the folder and remotes

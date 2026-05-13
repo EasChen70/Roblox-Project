@@ -12,6 +12,7 @@ local Income = require(ServerScriptService.Income)
 local PlayerData = require(ServerScriptService.PlayerData)
 local Tutorial = require(ServerScriptService.Tutorial)
 local CommunityRewards = require(ServerScriptService.CommunityRewards)
+local Gifting = require(ServerScriptService.Gifting)
 
 Spawner.start()
 
@@ -21,6 +22,7 @@ Income.setup()
 PlayerData.setup()
 Tutorial.init()
 CommunityRewards.init()
+Gifting.init()
 Gamepasses.init()
 PlayerData.start()
 
@@ -28,6 +30,7 @@ Income.start()
 
 -- Ordered PlayerRemoving: save player state BEFORE destroying placed brainrots
 Players.PlayerRemoving:Connect(function(player)
+	Gifting.cleanupPlayer(player)
 	-- 1. Save slot state first (reads live models from base while they still exist)
 	PlayerData.clearSession(player)
 	-- 2. Then release base + destroy placed brainrots + reset slot visuals
