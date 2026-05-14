@@ -614,13 +614,6 @@ function CommunityRewardsClient.start()
 
 	Remotes.CommunityClaimRequest:FireServer("sync")
 	task.delay(2, refreshClaimUI)
-
-	task.spawn(function()
-		while true do
-			refreshClaimUI()
-			task.wait(1)
-		end
-	end)
 end
 
 return CommunityRewardsClient

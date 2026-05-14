@@ -158,7 +158,6 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 			end
 
 			Placement.refreshPrompts(triggerPlayer)
-			print("[Placement] picked up", name, "L" .. pickupLevel, "from slot")
 		end)
 	end)
 
@@ -214,7 +213,6 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 			end
 
 			Placement.refreshPrompts(triggerPlayer)
-			print("[Placement] sold", name, "for $" .. sellValue)
 		end)
 	end)
 
@@ -248,7 +246,6 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 					local stats = triggerPlayer:FindFirstChild("leaderstats")
 					local money = stats and stats:FindFirstChild("Money")
 					if not money or money.Value < cost then
-						print("[Placement]", triggerPlayer.Name, "can't afford upgrade ($" .. cost .. ")")
 						return
 					end
 
@@ -272,8 +269,6 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 					if onDataChangedCallback then
 						onDataChangedCallback(triggerPlayer)
 					end
-
-					print("[Placement]", triggerPlayer.Name, "upgraded", name, "to L" .. newLevel, "for $" .. cost)
 				end)
 			end)
 		end
@@ -344,7 +339,6 @@ function Placement.setup()
 					local clone = template:Clone()
 
 					if not clone.PrimaryPart then
-						warn("[Placement] Missing PrimaryPart:", name)
 						return
 					end
 
@@ -397,8 +391,6 @@ function Placement.setup()
 					if onDataChangedCallback then
 						onDataChangedCallback(player)
 					end
-
-					print(player.Name, "placed", name, "L" .. level)
 				end)
 			end)
 		end

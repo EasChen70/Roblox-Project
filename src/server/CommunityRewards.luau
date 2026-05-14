@@ -362,26 +362,22 @@ function CommunityRewards.init()
 	local map = Workspace:FindFirstChild("Map")
 	local basesFolder = map and map:FindFirstChild("Bases")
 	if not basesFolder then
-		warn("[CommunityRewards] Workspace.Map.Bases not found")
 		return
 	end
 
 	for _, base in ipairs(basesFolder:GetChildren()) do
 		local pedestal = base:FindFirstChild(Config.PedestalModelName)
 		if not pedestal then
-			warn("[CommunityRewards] Missing pedestal on", base.Name)
 			continue
 		end
 
 		local displayModel = findDecorativeModel(pedestal)
 		if not displayModel then
-			warn("[CommunityRewards] Missing decorative model on", base.Name)
 			continue
 		end
 
 		local primaryPart = ensurePrimaryPart(displayModel)
 		if not primaryPart then
-			warn("[CommunityRewards] Missing primary part on", base.Name)
 			continue
 		end
 

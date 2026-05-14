@@ -353,7 +353,7 @@ function BrainrotUI.createWorldBillboard(model, data)
                 -- We don't break on <= 0 here because the server handles the actual destruction.
                 -- It will just sit at 0s for a split second before the model is destroyed.
                 
-                task.wait(0.5) -- Runs twice a second for a slightly smoother visual update
+                task.wait(1) -- One update per second keeps the timer readable with less churn
             end
         end)
     end

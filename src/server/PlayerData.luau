@@ -61,14 +61,6 @@ local debugFailpoints = {
 local migrations = {}
 local loadedCallbacks = {}
 
-print(
-	string.format(
-		"[PlayerData] Session owner initialized ownerId=%s rawJobId=%s",
-		SESSION_OWNER_ID,
-		RAW_JOB_ID ~= "" and RAW_JOB_ID or "<empty>"
-	)
-)
-
 local function countPresentEntries(values)
 	local count = 0
 	for _ in pairs(values or {}) do
@@ -208,7 +200,6 @@ local function runMigrations(data)
 		if migrations[v] then
 			local ok, result = pcall(migrations[v], data)
 			if not ok then
-				warn("[PlayerData] Migration failed:", result)
 				return nil
 			end
 			data = result
@@ -225,7 +216,6 @@ local function retryAsync(func)
 		if ok then
 			return true, result
 		end
-		warn("[PlayerData] Attempt", i, "failed:", result)
 		if i < MAX_RETRIES then
 			task.wait(RETRY_DELAYS[i])
 		end
@@ -422,22 +412,7 @@ local function readLiveState(player, data)
 	data.slots = readSlots(player)
 	data.inventory = {}
 
-	-- Slot logging (parity with inventory logging)
-	local slotCount = PlayerData.countSlots(data.slots)
-	print("[PlayerData] Reading slots for save, count:", slotCount)
-	for slotIndex, slotData in data.slots do
-		print(
-			"[PlayerData]   - Slot" .. slotIndex .. ":",
-			slotData.name,
-			slotData.rarity,
-			"L" .. slotData.level,
-			"$" .. slotData.accumulatedCash
-		)
-	end
-
 	local items = Pickup.getInventory(player)
-
-	print("[PlayerData] Reading inventory for save, count:", #items)
 
 	for _, tool in items do
 		if tool then
@@ -448,11 +423,8 @@ local function readLiveState(player, data)
 				level = toolLevel,
 				mutation = tool:GetAttribute("Mutation") or "None",
 			})
-			print("[PlayerData]   - Inv:", tool.Name, tool:GetAttribute("Rarity"), "L" .. toolLevel)
 		end
 	end
-
-	print("[PlayerData] Final inventory save count:", #data.inventory)
 end
 
 local function clonePersistedData(data)
@@ -572,29 +544,6 @@ local function destroyFinalizationRecord(player, finalizing)
 	end
 end
 
-local function logSaveAttempt(player, reason, attempt, result, storedLockOwnerId, detail)
-	local message = string.format(
-		"[PlayerData] SaveAttempt userId=%s name=%s reason=%s attempt=%d result=%s writerOwnerId=%s storedLockOwnerId=%s",
-		tostring(player.UserId),
-		player.Name,
-		reason,
-		attempt,
-		result,
-		tostring(SESSION_OWNER_ID),
-		tostring(storedLockOwnerId)
-	)
-
-	if detail and detail ~= "" then
-		message = message .. " detail=" .. detail
-	end
-
-	if result == "ok" then
-		print(message)
-	else
-		warn(message)
-	end
-end
-
 local function writeSnapshot(player, snapshot, reason, options)
 	options = options or {}
 
@@ -614,7 +563,6 @@ local function writeSnapshot(player, snapshot, reason, options)
 		end
 
 		if forcedDatastoreFailure then
-			logSaveAttempt(player, reason, attempt, "datastore_error", storedLockOwnerId, "studio_failpoint")
 			if attempt < MAX_RETRIES then
 				task.wait(RETRY_DELAYS[attempt])
 			end
@@ -646,16 +594,13 @@ local function writeSnapshot(player, snapshot, reason, options)
 		end)
 
 		if lockLost then
-			logSaveAttempt(player, reason, attempt, "lock_lost", storedLockOwnerId)
 			return false, "lock_lost", storedLockOwnerId
 		end
 
 		if ok then
-			logSaveAttempt(player, reason, attempt, "ok", storedLockOwnerId)
 			return true, "ok", storedLockOwnerId
 		end
 
-		logSaveAttempt(player, reason, attempt, "datastore_error", storedLockOwnerId, tostring(err))
 		if attempt < MAX_RETRIES then
 			task.wait(RETRY_DELAYS[attempt])
 		end
@@ -682,14 +627,6 @@ local function blockSessionAfterLockLost(player, reason, storedLockOwnerId)
 		task.cancel(lockThreads[player])
 		lockThreads[player] = nil
 	end
-
-	warn(
-		"[PlayerData] Lock lost for",
-		player.Name,
-		"during",
-		reason,
-		"storedLockOwnerId=" .. tostring(storedLockOwnerId)
-	)
 
 	task.defer(function()
 		if player.Parent then
@@ -793,17 +730,6 @@ function PlayerData.load(player)
 		player:SetAttribute("HasDoubleCash", true)
 	end
 
-	print(
-		"[PlayerData] Loaded",
-		player.Name,
-		"— Money:",
-		loadedData.money,
-		"Slots:",
-		PlayerData.countSlots(loadedData.slots or {}),
-		"Inventory:",
-		#(loadedData.inventory or {})
-	)
-
 	if base and loadedData.slots then
 		PlayerData.hydrateSlots(base, loadedData.slots)
 	end
@@ -827,9 +753,6 @@ function PlayerData.load(player)
 			)
 			task.wait(0.05) -- Small stagger between Tool creation to let client catch up
 		end
-		if #loadedData.inventory > 0 then
-			print("[PlayerData] Restored", #loadedData.inventory, "inventory items for", player.Name)
-		end
 	end
 
 	lockThreads[player] = task.spawn(function()
@@ -850,25 +773,11 @@ function PlayerData.load(player)
 
 	for _, callback in ipairs(loadedCallbacks) do
 		task.spawn(function()
-			local ok, err = pcall(callback, player)
-			if not ok then
-				warn("[PlayerData] onLoaded callback failed for", player.Name, err)
-			end
+			pcall(callback, player)
 		end)
 	end
 
 	if offlineAwardPayload and offlineAwardPayload.totalAmount > 0 then
-		print(
-			"[PlayerData] Offline award",
-			player.Name,
-			"amount=" .. tostring(offlineAwardPayload.totalAmount),
-			"formatted=" .. Util.formatMoney(offlineAwardPayload.totalAmount),
-			"seconds=" .. tostring(offlineAwardPayload.offlineSeconds),
-			"slots=" .. tostring(offlineAwardPayload.slotCount),
-			"doubleCash=" .. tostring(offlineAwardPayload.doubleCashOwned),
-			"resolved=" .. tostring(offlineAwardPayload.doubleCashResolved)
-		)
-
 		if Config.OfflineIncomePopupEnabled then
 			local popupPayload = {
 				totalAmount = offlineAwardPayload.totalAmount,
@@ -914,13 +823,11 @@ function PlayerData.hydrateSlots(base, slots)
 		local folderName = getModelFolderName(slotData.rarity, mutation)
 		local folder = ServerStorage:FindFirstChild(folderName)
 		if not folder then
-			warn("[PlayerData] No folder:", folderName)
 			continue
 		end
 
 		local template = folder:FindFirstChild(slotData.name)
 		if not template then
-			warn("[PlayerData] Missing model:", slotData.name, "— skipping slot", slotIndex)
 			continue
 		end
 
@@ -948,7 +855,6 @@ function PlayerData.hydrateSlots(base, slots)
 		end)
 
 		if not ok or not clone then
-			warn("[PlayerData] Failed to clone", slotData.name)
 			continue
 		end
 
@@ -990,8 +896,6 @@ function PlayerData.hydrateSlots(base, slots)
 			baseIncome = baseIncome,
 			level = level,
 		})
-
-		print("[PlayerData] Hydrated Slot" .. slotIndex .. ":", slotData.name, "L" .. level)
 	end
 end
 
@@ -1013,11 +917,8 @@ local function performSaveWrite(player, reason)
 
 	if success then
 		lastSave[player] = tick()
-		print("[PlayerData] Saved", player.Name, "(" .. reason .. ")")
 	elseif saveReason == "lock_lost" then
 		blockSessionAfterLockLost(player, reason, storedLockOwnerId)
-	else
-		warn("[PlayerData] FAILED to save", player.Name, "(" .. reason .. ")")
 	end
 
 	return success, saveReason
@@ -1078,7 +979,6 @@ function PlayerData.requestSave(player)
 
 	if pendingSave[player] then
 		-- Already scheduled — the pending handler will capture final state when it fires
-		print("[PlayerData] requestSave coalesced for", player.Name)
 		return
 	end
 
@@ -1098,10 +998,7 @@ function PlayerData.requestSave(player)
 			return
 		end
 
-		local ok, err = pcall(runNormalSaveLoop, player, "requested")
-		if not ok then
-			warn("[PlayerData] requestSave handler crashed for", player.Name, err)
-		end
+		pcall(runNormalSaveLoop, player, "requested")
 	end)
 end
 
@@ -1128,11 +1025,6 @@ function PlayerData.save(player)
 
 	local now = tick()
 	if lastSave[player] and (now - lastSave[player]) < SAVE_THROTTLE then
-		print(
-			"[PlayerData] save throttled for",
-			player.Name,
-			"(" .. string.format("%.1f", now - lastSave[player]) .. "s since last)"
-		)
 		return true, "ok"
 	end
 
@@ -1220,10 +1112,6 @@ function PlayerData.clearSession(player)
 			state.nextReason = nil
 		end
 
-		if not sessionBase[player] then
-			warn("[PlayerData] clearSession snapshot capture without sessionBase for", player.Name)
-		end
-
 		finalizing = createFinalizationRecord(buildSaveSnapshot(player, data))
 		finalizingSessions[player] = finalizing
 	end
@@ -1258,8 +1146,6 @@ function PlayerData.clearSession(player)
 		finalizing.reason = "ok"
 		finalizing.event:Fire()
 		cleanupTerminalSessionState(player)
-		print("[PlayerData] Final save", player.Name)
-		print("[PlayerData] Session cleared", player.Name)
 		destroyFinalizationRecord(player, finalizing)
 		return true, "ok"
 	end
@@ -1270,8 +1156,6 @@ function PlayerData.clearSession(player)
 		finalizing.reason = "lock_lost"
 		finalizing.event:Fire()
 		cleanupTerminalSessionState(player)
-		warn("[PlayerData] Final save skipped because lock was lost for", player.Name)
-		print("[PlayerData] Session cleared", player.Name)
 		destroyFinalizationRecord(player, finalizing)
 		return false, "lock_lost"
 	end
@@ -1281,7 +1165,6 @@ function PlayerData.clearSession(player)
 	finalizing.reason = "datastore_error"
 	finalizing.event:Fire()
 	cleanupTerminalSessionState(player)
-	warn("[PlayerData] Final save FAILED for", player.Name)
 	return false, "datastore_error"
 end
 

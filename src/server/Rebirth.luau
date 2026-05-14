@@ -41,7 +41,6 @@ end
 local function doRebirth(player)
 	local ok, result = canRebirth(player)
 	if not ok then
-		print("[Rebirth]", player.Name, "cannot rebirth —", result)
 		return
 	end
 
@@ -67,10 +66,6 @@ local function doRebirth(player)
 
 	-- Save
 	PlayerData.requestSave(player)
-
-	print("[Rebirth]", player.Name, "rebirthed →", rebirths.Value,
-		"| multiplier:", next.multiplier,
-		"| power reset to 1")
 end
 
 function Rebirth.init()
@@ -80,10 +75,7 @@ function Rebirth.init()
 		end
 		rebirthDebounce[player] = true
 
-		local ok, err = pcall(doRebirth, player)
-		if not ok then
-			warn("[Rebirth] Error for", player.Name, err)
-		end
+		pcall(doRebirth, player)
 
 		task.delay(1, function()
 			rebirthDebounce[player] = nil

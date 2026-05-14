@@ -17,46 +17,8 @@ local myBaseId = nil
 local myBaseName = nil
 local cachedControls = nil
 local movementRecoveryToken = 0
-local DEBUG_MOVEMENT_RECOVERY = true
 local MOVEMENT_RECOVERY_DELAYS = { 0, 0.15, 0.5 }
 local zeroVector = Vector3.new(0, 0, 0)
-
-local function getDebugId(instance)
-	if not instance then
-		return "nil"
-	end
-
-	local ok, debugId = pcall(function()
-		return instance:GetDebugId()
-	end)
-
-	if ok then
-		return debugId
-	end
-
-	return instance.Name
-end
-
-local function logMovementRecovery(passIndex, character, humanoid, rootPart)
-	if not DEBUG_MOVEMENT_RECOVERY then
-		return
-	end
-
-	print(
-		string.format(
-			"[RespawnRecovery][Client] pass=%d/%d char=%s platformStand=%s walkSpeed=%s autoRotate=%s sit=%s state=%s anchored=%s",
-			passIndex,
-			#MOVEMENT_RECOVERY_DELAYS,
-			getDebugId(character),
-			tostring(humanoid and humanoid.PlatformStand),
-			tostring(humanoid and humanoid.WalkSpeed),
-			tostring(humanoid and humanoid.AutoRotate),
-			tostring(humanoid and humanoid.Sit),
-			tostring(humanoid and humanoid:GetState()),
-			tostring(rootPart and rootPart.Anchored)
-		)
-	)
-end
 
 local function getLocalControls(refreshCache)
 	if refreshCache then
@@ -156,8 +118,6 @@ local function recoverCharacterMovement(character)
 				elseif isFinalPass then
 					humanoid:ChangeState(Enum.HumanoidStateType.Running)
 				end
-
-				logMovementRecovery(scheduledPassIndex, character, humanoid, rootPart)
 			end)
 		end
 	end)

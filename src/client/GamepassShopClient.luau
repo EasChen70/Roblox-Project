@@ -6,7 +6,6 @@ local Config = require(ReplicatedStorage.Config)
 
 local GamepassShopClient = {}
 
-local DEBUG_GAMEPASS_SHOP = false
 local PANEL_TEXTURE = "rbxassetid://6927295847"
 
 local player = Players.LocalPlayer
@@ -31,14 +30,6 @@ local entries = {
 		accent = Color3.fromRGB(73, 146, 255),
 	},
 }
-
-local function logDebug(...)
-	if not DEBUG_GAMEPASS_SHOP then
-		return
-	end
-
-	print("[GamepassShopClient]", ...)
-end
 
 local function createStroke(parent, color, thickness)
 	local stroke = Instance.new("UIStroke")
@@ -149,8 +140,6 @@ local function fetchGamepassIconAsync(passId, callback)
 				iconAssetId = resolvedIconId
 			end
 			gamepassIconCache[passId] = iconAssetId
-		else
-			warn(string.format("[GamepassShopClient] Failed to fetch gamepass icon for pass %d: %s", passId, tostring(productInfo)))
 		end
 
 		local callbacks = pendingIconRequests[passId] or {}
@@ -166,13 +155,6 @@ local function updateButtonState(button, key)
 	local owned = player:GetAttribute("Has" .. key) == true
 	local titleLabel = button:FindFirstChild("TitleLabel")
 	local buttonStroke = button:FindFirstChildOfClass("UIStroke")
-
-	logDebug(
-		"updateButtonState",
-		"key=" .. key,
-		"owned=" .. tostring(owned),
-		"attribute=" .. tostring(player:GetAttribute("Has" .. key))
-	)
 
 	if titleLabel then
 		titleLabel.Text = owned and "OWNED" or "BUY (49 R)"
@@ -353,7 +335,6 @@ local function buildRow(parent, entry)
 			return
 		end
 
-		logDebug("prompt purchase", "key=" .. entry.key, "passId=" .. tostring(Config.Gamepasses[entry.key]))
 		MarketplaceService:PromptGamePassPurchase(player, Config.Gamepasses[entry.key])
 	end)
 
@@ -374,12 +355,6 @@ local function openShop()
 	screen.DisplayOrder = 25
 	screen.Parent = playerGui
 	shopGui = screen
-
-	logDebug(
-		"openShop",
-		"HasDoubleCash=" .. tostring(player:GetAttribute("HasDoubleCash")),
-		"HasSpeedBoost=" .. tostring(player:GetAttribute("HasSpeedBoost"))
-	)
 
 	local backdrop = Instance.new("TextButton")
 	backdrop.Name = "Backdrop"
@@ -484,13 +459,11 @@ end
 function GamepassShopClient.start()
 	local buttonGui = playerGui:WaitForChild("ShopGui", 10)
 	if not buttonGui then
-		warn("[GamepassShopClient] ShopGui not found")
 		return
 	end
 
 	local shopButton = buttonGui:WaitForChild("ShopButton", 5)
 	if not shopButton then
-		warn("[GamepassShopClient] ShopButton not found")
 		return
 	end
 

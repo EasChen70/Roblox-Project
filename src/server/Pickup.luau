@@ -6,7 +6,6 @@ local Config = require(ReplicatedStorage.Config)
 local Brainrots = require(ReplicatedStorage.Brainrots)
 local Spawner = require(game.ServerScriptService.Spawner)
 local BrainrotUI = require(game.ReplicatedStorage.BrainrotUI)
-local RunService = game:GetService("RunService")
 
 local Pickup = {}
 
@@ -21,7 +20,6 @@ local reservedGiftToolByPlayer = {} -- player → Tool
 
 local worldClaims = {}
 local worldClaimDestroyConnections = {}
-local carryGuardConnections = {}
 
 local onStashCallback = nil
 local onEquipCallback = nil
@@ -110,14 +108,6 @@ local function releaseWorldClaim(model)
 	end
 
 	worldClaims[model] = nil
-end
-
-local function disconnectCarryGuard(player)
-	local connection = carryGuardConnections[player]
-	if connection then
-		connection:Disconnect()
-		carryGuardConnections[player] = nil
-	end
 end
 
 local function claimWorldModel(player, model)
@@ -412,22 +402,11 @@ local function createBrainrotTool(player, data)
 	handle.Anchored = false
 	handle.Parent = tool
 
-	print(
-		"[Pickup] Created tool:",
-		data.name,
-		"L" .. level,
-		"RequiresHandle:",
-		tool.RequiresHandle,
-		"Handle exists:",
-		tool:FindFirstChild("Handle") ~= nil
-	)
-
 	local folderName = getModelFolderName(data.rarity, mutation)
 	local folder = ServerStorage:FindFirstChild(folderName) or modelFolders[data.rarity]
 	local template = folder and folder:FindFirstChild(data.name)
 
 	if not template then
-		warn("Missing model:", data.name, data.rarity)
 		return
 	end
 
@@ -479,7 +458,6 @@ local function createBrainrotTool(player, data)
 			visual.PrimaryPart = visual:FindFirstChildWhichIsA("BasePart")
 		end
 		if not visual.PrimaryPart then
-			warn("No PrimaryPart:", data.name)
 			return
 		end
 
@@ -516,8 +494,6 @@ local function createBrainrotTool(player, data)
 			end
 		end
 
-		print("[Pickup] equip weld set for", data.name)
-
 		-- Billboard for carried visual: show level if > 1, otherwise plain
 		BrainrotUI.createBillboard(visual, {
 			name = data.name,
@@ -535,8 +511,6 @@ local function createBrainrotTool(player, data)
 		if onEquipCallback then
 			onEquipCallback(player, true)
 		end
-
-		print("[Pickup] equipped", data.name, "L" .. level, "for", player.Name)
 	end)
 
 	tool.Unequipped:Connect(function()
@@ -545,7 +519,6 @@ local function createBrainrotTool(player, data)
 			if isCarryingWorldItem(player) then
 				ensureWorldCarryAnimation(player)
 			end
-			print("[Pickup] ignored stale or rejected unequip cleanup for", player.Name, tool.Name)
 			return
 		end
 
@@ -566,8 +539,6 @@ local function createBrainrotTool(player, data)
 		if onEquipCallback then
 			onEquipCallback(player, false)
 		end
-
-		print("[Pickup] unequipped for", player.Name)
 	end)
 
 	tool.Parent = player.Backpack
@@ -588,7 +559,6 @@ function Pickup.giveItem(player, name, rarity, baseIncome, level, mutation)
 
 	local folder = modelFolders[rarity]
 	if not folder or not folder:FindFirstChild(name) then
-		warn("Missing brainrot:", name, rarity)
 		return false
 	end
 
@@ -727,7 +697,6 @@ end
 
 function Pickup.grab(player, model)
 	if carrying[player] then
-		print("[Pickup] grab blocked —", player.Name, "already carrying something")
 		return
 	end
 
@@ -752,9 +721,6 @@ function Pickup.grab(player, model)
 	model:SetAttribute("BaseIncome", getInstanceBaseIncome(model))
 	-- [[ ADDITION END ]] --
 
-	local name = model:GetAttribute("Name")
-	local rarity = model:GetAttribute("Rarity")
-
 	local prompt = model.PrimaryPart:FindFirstChildOfClass("ProximityPrompt")
 	if prompt then
 		prompt:Destroy()
@@ -764,17 +730,13 @@ function Pickup.grab(player, model)
 	-- cannot keep visually ticking on a character-held model.
 	destroyWorldBillboard(model)
 
-	local partCount = 0
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
 			p.Anchored = true
 			p.CanCollide = false
 			p.Massless = true
-			partCount += 1
 		end
 	end
-
-	print("[Pickup] Model part count:", partCount)
 
 	model:PivotTo(getCarryPivot(root, model:GetAttribute("Name") or model.Name))
 	model.Parent = character
@@ -799,15 +761,11 @@ function Pickup.grab(player, model)
 		end
 	end
 
-	print("[Pickup] grab weld set, all parts unanchored —", model:GetAttribute("Name"), "parts:", partCount)
-
 	Spawner.clearPoint(model)
 
 	carrying[player] = model
 	carryTracks[player] = startCarryAnim(player)
 	Remotes.GrabStateChanged:FireClient(player, true)
-
-	print("[Pickup]", player.Name, "grabbed", name, "(", rarity, ")")
 end
 
 ------------------------------------------------
@@ -837,16 +795,6 @@ function Pickup.stash(player)
 	carrying[player] = nil
 
 	createBrainrotTool(player, data)
-
-	local items = inventory[player]
-	print("[Pickup] Inventory after stash for", player.Name, ":", items and #items or "NIL")
-	if items then
-		for i, tool in items do
-			print("[Pickup]   Tool", i, ":", tool.Name, "L" .. (tool:GetAttribute("Level") or 1))
-		end
-	end
-
-	print("[Pickup]", player.Name, "stashed", data.name, "to backpack")
 
 	if onStashCallback then
 		onStashCallback(player)
@@ -904,18 +852,6 @@ function Pickup.drop(player)
 			groundY = root.Position.Y - 3
 		end
 
-		print(
-			"[Pickup] DROP DEBUG",
-			"| rootY:",
-			root.Position.Y,
-			"| hitY:",
-			rawHitY or "MISS",
-			"| hitInstance:",
-			hit and hit.Instance.Name or "nil",
-			"| groundY (final):",
-			groundY
-		)
-
 		model.Parent = workspace
 		for _, p in model:GetDescendants() do
 			if p:IsA("BasePart") then
@@ -949,7 +885,6 @@ function Pickup.drop(player)
 
 	Spawner.startDespawnTimer(model)
 	recreateWorldBillboard(model)
-	print("[Pickup]", player.Name, "dropped", model:GetAttribute("Name"))
 end
 
 ------------------------------------------------
@@ -959,29 +894,6 @@ end
 Players.PlayerAdded:Connect(function(player)
 	player.CharacterAdded:Connect(function(character)
 		local humanoid = character:WaitForChild("Humanoid")
-		
-		-- [[ ADDITION START: Bulletproof Guard Loop ]] --
-		-- Runs 60 times a second to ensure hands stay empty while carrying world items
-		disconnectCarryGuard(player)
-		local guardConnection
-		guardConnection = RunService.Heartbeat:Connect(function()
-			if carryGuardConnections[player] ~= guardConnection then
-				guardConnection:Disconnect()
-				return
-			end
-			if not character.Parent then
-				disconnectCarryGuard(player)
-				return
-			end
-			local model = carrying[player]
-			if model and model:GetAttribute("IsWorldItem") then
-				if character:FindFirstChildOfClass("Tool") then
-					humanoid:UnequipTools()
-				end
-			end
-		end)
-		carryGuardConnections[player] = guardConnection
-		-- [[ ADDITION END ]] --
 
 		local saved = inventorySnapshot[player]
 		if saved then
@@ -1029,12 +941,12 @@ local spawnZoneFolders = {
 	game.Workspace:WaitForChild("SpawnZonesMythic"),
 	game.Workspace:WaitForChild("SpawnZonesSecret"),
 	game.Workspace:WaitForChild("SpawnZonesDivine"),
+	game.Workspace:WaitForChild("Map"),
 }
 
 for _, folder in spawnZoneFolders do
 	local boundary = folder:WaitForChild("Boundary", 10)
 	if not boundary then
-		warn("[Pickup] No Boundary found in", folder.Name)
 		continue
 	end
 
@@ -1088,7 +1000,6 @@ function Pickup.cleanup(player)
 	if carryTracks[player] then
 		stopCarryAnim(carryTracks[player])
 	end
-	disconnectCarryGuard(player)
 
 	carrying[player] = nil
 	inventory[player] = nil

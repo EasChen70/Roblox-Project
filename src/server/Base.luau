@@ -28,21 +28,6 @@ local function getSortedBases()
 	return BaseIdentity.getSortedBases(bases)
 end
 
-local function warnInvalidBaseId(base, sortKey)
-	local fallbackDetail = sortKey.fallbackId ~= nil
-		and ("falling back to name suffix " .. tostring(sortKey.fallbackId))
-		or "falling back to alphabetical name ordering"
-
-	warn(
-		string.format(
-			"[Base] %s has %s BaseId metadata; %s.",
-			base:GetFullName(),
-			sortKey.issue,
-			fallbackDetail
-		)
-	)
-end
-
 local function validateBases()
 	if validatedBaseIds then
 		return
@@ -53,23 +38,11 @@ local function validateBases()
 	local seenConfiguredIds = {}
 	for _, base in ipairs(bases:GetChildren()) do
 		local sortKey = BaseIdentity.getSortKey(base)
-		if sortKey.issue then
-			warnInvalidBaseId(base, sortKey)
-		end
 
 		local configuredId = sortKey.configuredId
 		if configuredId ~= nil then
 			local existing = seenConfiguredIds[configuredId]
-			if existing and existing ~= base then
-				warn(
-					string.format(
-						"[Base] Duplicate BaseId %d detected on %s and %s; using name tie-break for deterministic assignment.",
-						configuredId,
-						existing:GetFullName(),
-						base:GetFullName()
-					)
-				)
-			elseif not existing then
+			if not existing then
 				seenConfiguredIds[configuredId] = base
 			end
 		end
@@ -282,7 +255,6 @@ function Base.claimBase(player)
 		if not taken then
 			claimedBases[player] = base
 			setAssignedBaseAttributes(player, base)
-			print(player.Name, "claimed", base.Name)
 			createBaseSign(base, player)
 			Remotes.BaseAssigned:FireClient(player, base.Name)
 
@@ -294,14 +266,12 @@ function Base.claimBase(player)
 	end
 
 	setAssignedBaseAttributes(player, nil)
-	warn("No bases available for", player.Name)
 	return nil
 end
 
 function Base.releaseBase(player)
 	if claimedBases[player] then
 		local base = claimedBases[player]
-		print(player.Name, "released", base.Name)
 
 		local CommunityRewards = require(game.ServerScriptService.CommunityRewards)
 		CommunityRewards.cleanupBase(base)

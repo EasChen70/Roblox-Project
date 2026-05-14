@@ -515,7 +515,6 @@ function CannonShopClient.start()
 			attempts += 1
 			task.wait(0.5)
 		end
-		warn("[CannonShopClient] No CannonModels found after 10s")
 	end)
 
 	RunService.Heartbeat:Connect(function()

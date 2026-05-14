@@ -35,7 +35,6 @@ function CannonShop.init()
 
 		local upgrade = findUpgrade(amount)
 		if not upgrade then
-			warn("[CannonShop] Invalid amount from", player.Name, amount)
 			return
 		end
 
@@ -50,24 +49,9 @@ function CannonShop.init()
 
 		local currentPower = player:GetAttribute("CannonPower") or 1
 		if currentPower + upgrade.amount > Config.MaxCannonPower then
-			warn("[CannonShop] Power cap exceeded attempt from", player.Name)
 			return
 		end
 		local actualCost = computeCost(upgrade.cost, currentPower, upgrade.amount)
-		print(
-			"[CannonShop] Purchase attempt:",
-			player.Name,
-			"| amount:",
-			amount,
-			"| currentPower:",
-			currentPower,
-			"| actualCost:",
-			actualCost,
-			"| money:",
-			money.Value,
-			"| canAfford:",
-			money.Value >= actualCost
-		)
 		if money.Value < actualCost then
 			return
 		end
@@ -77,16 +61,6 @@ function CannonShop.init()
 		player:SetAttribute("CannonPower", newPower)
 
 		PlayerData.requestSave(player)
-		print(
-			"[CannonShop]",
-			player.Name,
-			"upgraded cannon +",
-			upgrade.amount,
-			"→ Power:",
-			newPower,
-			"Cost was:",
-			actualCost
-		)
 	end)
 end
 

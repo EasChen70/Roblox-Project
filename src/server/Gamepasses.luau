@@ -6,61 +6,13 @@ local Config = require(ReplicatedStorage.Config)
 
 local Gamepasses = {}
 
-local DEBUG_GAMEPASSES = true
 local initialized = false
 local passIdToKey = {}
 local ownershipRefreshCache = {}
 local OWNERSHIP_CACHE_WINDOW = 5
-local DEBUG_RESPAWN_RECOVERY = true
 local RESPAWN_RECOVERY_DELAYS = { 0, 0.15, 0.5 }
 local respawnRecoveryTokens = {}
 local zeroVector = Vector3.new(0, 0, 0)
-
-local function logDebug(...)
-	if not DEBUG_GAMEPASSES then
-		return
-	end
-
-	print("[Gamepasses]", ...)
-end
-
-local function getDebugId(instance)
-	if not instance then
-		return "nil"
-	end
-
-	local ok, debugId = pcall(function()
-		return instance:GetDebugId()
-	end)
-
-	if ok then
-		return debugId
-	end
-
-	return instance.Name
-end
-
-local function logRespawnRecovery(player, passIndex, character, humanoid, rootPart)
-	if not DEBUG_RESPAWN_RECOVERY then
-		return
-	end
-
-	logDebug(
-		string.format(
-			"[RespawnRecovery][Server] player=%s pass=%d/%d char=%s platformStand=%s walkSpeed=%s autoRotate=%s sit=%s state=%s anchored=%s",
-			tostring(player and player.Name or "nil"),
-			passIndex,
-			#RESPAWN_RECOVERY_DELAYS,
-			getDebugId(character),
-			tostring(humanoid and humanoid.PlatformStand),
-			tostring(humanoid and humanoid.WalkSpeed),
-			tostring(humanoid and humanoid.AutoRotate),
-			tostring(humanoid and humanoid.Sit),
-			tostring(humanoid and humanoid:GetState()),
-			tostring(rootPart and rootPart.Anchored)
-		)
-	)
-end
 
 local function getAttributeName(key)
 	return "Has" .. key
@@ -122,14 +74,6 @@ function Gamepasses.refreshOwnershipNow(player)
 			result.ownership[key] = owned
 			result.resolved[key] = true
 			setOwnershipAttribute(player, key, owned)
-			logDebug(
-				"ownership refresh",
-				"player=" .. player.Name,
-				"userId=" .. tostring(player.UserId),
-				"key=" .. key,
-				"passId=" .. tostring(passId),
-				"owned=" .. tostring(owned)
-			)
 		else
 			result.allSucceeded = false
 			result.ownership[key] = previousOwned == true
@@ -137,7 +81,6 @@ function Gamepasses.refreshOwnershipNow(player)
 			if previousOwned then
 				setOwnershipAttribute(player, key, true)
 			end
-			warn(string.format("[Gamepasses] Failed ownership check for %s (%s): %s", player.Name, key, tostring(ownedOrError)))
 		end
 	end
 
@@ -184,9 +127,6 @@ local function scheduleRespawnRecovery(player, character)
 			end
 
 			Gamepasses.applyCharacterDefaults(player, humanoid, options)
-
-			local rootPart = character:FindFirstChild("HumanoidRootPart")
-			logRespawnRecovery(player, scheduledPassIndex, character, humanoid, rootPart)
 		end)
 	end
 end
@@ -298,13 +238,6 @@ function Gamepasses.init()
 
 	MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, gamePassId, wasPurchased)
 		local key = passIdToKey[gamePassId]
-		logDebug(
-			"purchase finished",
-			"player=" .. tostring(player and player.Name or "nil"),
-			"passId=" .. tostring(gamePassId),
-			"key=" .. tostring(key),
-			"wasPurchased=" .. tostring(wasPurchased)
-		)
 		if not key or not wasPurchased or not player then
 			return
 		end

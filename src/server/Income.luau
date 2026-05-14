@@ -70,6 +70,35 @@ local function updateBillboard(collectButton, amount)
 	label.Text = Util.formatMoney(amount)
 end
 
+local function getBaseIncomeLabel(base)
+	local sign = base:FindFirstChild("Sign")
+	if not sign then
+		return nil
+	end
+
+	local gui = sign:FindFirstChild("BaseSign")
+	if not gui then
+		return nil
+	end
+
+	local bg = gui:FindFirstChild("Background")
+	if not bg then
+		return nil
+	end
+
+	local info = bg:FindFirstChild("Info")
+	if not info then
+		return nil
+	end
+
+	local label = info:FindFirstChild("IncomeDisplay")
+	if label and label:IsA("TextLabel") then
+		return label
+	end
+
+	return nil
+end
+
 function Income.setup()
 	for _, base in bases:GetChildren() do
 		local slots = base:FindFirstChild("Slots")
@@ -158,7 +187,11 @@ function Income.start()
 						end
 					end
 
-					Base.updateSignIncome(base, Util.formatMoney(totalIncome) .. "/s")
+					local formattedIncome = Util.formatMoney(totalIncome) .. "/s"
+					local incomeLabel = getBaseIncomeLabel(base)
+					if not incomeLabel or incomeLabel.Text ~= formattedIncome then
+						Base.updateSignIncome(base, formattedIncome)
+					end
 				end
 			end
 		end

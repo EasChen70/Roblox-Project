@@ -9,7 +9,6 @@ local Remotes = require(ReplicatedStorage.Remotes)
 local GiftingClient = {}
 
 local TOAST_DURATION = 3
-local PROMPT_REFRESH_INTERVAL = 0.35
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -22,6 +21,9 @@ local modalRequestId = nil
 local toastGui = nil
 local activeToastFrame = nil
 local activeToastToken = 0
+local trackedGiftPrompts = {}
+local trackedGiftPromptList = {}
+local characterConnections = {}
 
 local function attachPanelTexture(parent, transparency)
 	local texture = Instance.new("ImageLabel")
@@ -171,10 +173,67 @@ local function shouldShowGiftPrompt(prompt)
 	return hasEquippedGiftTool()
 end
 
+local function trackGiftPrompt(prompt)
+	if trackedGiftPrompts[prompt] then
+		return
+	end
+
+	trackedGiftPrompts[prompt] = true
+	table.insert(trackedGiftPromptList, prompt)
+end
+
+local function untrackGiftPrompt(prompt)
+	if not trackedGiftPrompts[prompt] then
+		return
+	end
+
+	trackedGiftPrompts[prompt] = nil
+	for index = #trackedGiftPromptList, 1, -1 do
+		if trackedGiftPromptList[index] == prompt then
+			table.remove(trackedGiftPromptList, index)
+			break
+		end
+	end
+end
+
 local function refreshGiftPrompts()
+	for _, prompt in ipairs(trackedGiftPromptList) do
+		if prompt.Parent then
+			prompt.Enabled = shouldShowGiftPrompt(prompt)
+		end
+	end
+end
+
+local function disconnectCharacterConnections()
+	for _, connection in pairs(characterConnections) do
+		connection:Disconnect()
+	end
+	table.clear(characterConnections)
+end
+
+local function watchCharacter(character)
+	disconnectCharacterConnections()
+	if not character then
+		return
+	end
+
+	characterConnections.childAdded = character.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") then
+			refreshGiftPrompts()
+		end
+	end)
+
+	characterConnections.childRemoved = character.ChildRemoved:Connect(function(child)
+		if child:IsA("Tool") then
+			refreshGiftPrompts()
+		end
+	end)
+end
+
+local function seedGiftPrompts()
 	for _, descendant in ipairs(Workspace:GetDescendants()) do
-		if descendant:IsA("ProximityPrompt") and descendant:GetAttribute("GiftPrompt") == true then
-			descendant.Enabled = shouldShowGiftPrompt(descendant)
+		if descendant:IsA("ProximityPrompt") and isGiftPrompt(descendant) then
+			trackGiftPrompt(descendant)
 		end
 	end
 end
@@ -594,6 +653,7 @@ function GiftingClient.start()
 		return
 	end
 	started = true
+	seedGiftPrompts()
 
 	Remotes.GiftResult.OnClientEvent:Connect(handleGiftResult)
 
@@ -605,18 +665,37 @@ function GiftingClient.start()
 		prompt.Enabled = shouldShowGiftPrompt(prompt)
 	end)
 
-	player.CharacterAdded:Connect(function()
+	Workspace.DescendantAdded:Connect(function(descendant)
+		if not descendant:IsA("ProximityPrompt") then
+			return
+		end
+
+		task.defer(function()
+			if descendant.Parent and isGiftPrompt(descendant) then
+				trackGiftPrompt(descendant)
+				refreshGiftPrompts()
+			end
+		end)
+	end)
+
+	Workspace.DescendantRemoving:Connect(function(descendant)
+		if descendant:IsA("ProximityPrompt") and trackedGiftPrompts[descendant] then
+			untrackGiftPrompt(descendant)
+		end
+	end)
+
+	player.CharacterAdded:Connect(function(character)
+		watchCharacter(character)
 		task.delay(0.25, refreshGiftPrompts)
 	end)
 
-	refreshGiftPrompts()
-
-	task.spawn(function()
-		while true do
-			refreshGiftPrompts()
-			task.wait(PROMPT_REFRESH_INTERVAL)
-		end
+	player.CharacterRemoving:Connect(function()
+		disconnectCharacterConnections()
+		refreshGiftPrompts()
 	end)
+
+	watchCharacter(player.Character)
+	refreshGiftPrompts()
 end
 
 return GiftingClient
