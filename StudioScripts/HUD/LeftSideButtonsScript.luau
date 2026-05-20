@@ -84,32 +84,54 @@ local function createSquareButton(name, text, imageId, position, bgColor, iconSc
 	return btn
 end
 
-local shopBtn =
-	createSquareButton("Shop", "SHOP", "77580506639212", UDim2.new(0.01, 0, 0.35, 0), Color3.fromRGB(30, 35, 45), 0.80)
+local shopBtn = createSquareButton(
+	"Shop",
+	"SHOP",
+	"77580506639212",
+	UDim2.new(0.01, 0, 0.25, 0),
+	Color3.fromRGB(30, 35, 45),
+	0.80
+)
 
 local rebirthBtn = createSquareButton(
 	"Rebirth",
 	"REBIRTH",
 	"99330025492372",
-	UDim2.new(0.01, 0, 0.50, 0),
+	UDim2.new(0.01, 0, 0.40, 0),
 	Color3.fromRGB(30, 30, 30),
 	0.65
 )
 
 local rebirthGuiOpen = false
 
+local function attachPanelTexture(parent, transparency)
+	local texture = Instance.new("ImageLabel")
+	texture.Name = "PanelTexture"
+	texture.BackgroundTransparency = 1
+	texture.Image = "rbxassetid://6927295847" 
+	texture.Size = UDim2.fromScale(1, 1)
+	texture.ScaleType = Enum.ScaleType.Tile
+	texture.TileSize = UDim2.fromOffset(24, 24)
+	texture.ImageTransparency = transparency
+	texture.ZIndex = parent.ZIndex
+	texture.Parent = parent
+
+	local corner = parent:FindFirstChildOfClass("UICorner")
+	if corner then
+		local textureCorner = Instance.new("UICorner")
+		textureCorner.CornerRadius = corner.CornerRadius
+		textureCorner.Parent = texture
+	end
+end
+
 local function closeRebirthGui()
 	local existing = playerGui:FindFirstChild("RebirthPopupGui")
-	if existing then
-		existing:Destroy()
-	end
+	if existing then existing:Destroy() end
 	rebirthGuiOpen = false
 end
 
 local function openRebirthGui()
-	if rebirthGuiOpen then
-		return
-	end
+	if rebirthGuiOpen then return end
 	rebirthGuiOpen = true
 
 	local remotes = game.ReplicatedStorage:WaitForChild("RemoteEvents")
@@ -120,14 +142,16 @@ local function openRebirthGui()
 	local currentMult = player:GetAttribute("RebirthMultiplier") or 1.0
 
 	local requirements = {
-		{ rebirth = 1, power = 20, multiplier = 1.5 },
-		{ rebirth = 2, power = 40, multiplier = 2.0 },
-		{ rebirth = 3, power = 60, multiplier = 2.5 },
-		{ rebirth = 4, power = 80, multiplier = 3.0 },
-		{ rebirth = 5, power = 90, multiplier = 3.5 },
-		{ rebirth = 6, power = 100, multiplier = 4.0 },
-		{ rebirth = 7, power = 110, multiplier = 4.5 },
-		{ rebirth = 8, power = 120, multiplier = 5.0 },
+		{ rebirth = 1,  power = 20,  multiplier = 1.5 },
+		{ rebirth = 2,  power = 40,  multiplier = 2.0 },
+		{ rebirth = 3,  power = 60,  multiplier = 2.5 },
+		{ rebirth = 4,  power = 80,  multiplier = 3.0 },
+		{ rebirth = 5,  power = 90,  multiplier = 3.5 },
+		{ rebirth = 6,  power = 100, multiplier = 4.0 },
+		{ rebirth = 7,  power = 110, multiplier = 4.5 },
+		{ rebirth = 8,  power = 120, multiplier = 5.0 },
+		{ rebirth = 9,  power = 130, multiplier = 5.5 },
+		{ rebirth = 10,  power = 140, multiplier = 6.0 },
 	}
 
 	local nextReq = requirements[currentRebirths + 1]
@@ -145,7 +169,7 @@ local function openRebirthGui()
 	backdrop.AutoButtonColor = false
 	backdrop.Size = UDim2.fromScale(1, 1)
 	backdrop.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	backdrop.BackgroundTransparency = 0.5
+	backdrop.BackgroundTransparency = 1
 	backdrop.BorderSizePixel = 0
 	backdrop.Parent = screen
 
@@ -154,11 +178,13 @@ local function openRebirthGui()
 	panel.Position = UDim2.fromScale(0.5, 0.5)
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
 	panel.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-	panel.BackgroundTransparency = 0.05
+	panel.BackgroundTransparency = 0.1
 	panel.BorderSizePixel = 0
 	panel.Parent = screen
-	Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 16)
+	Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 15)
 	Instance.new("UIAspectRatioConstraint", panel).AspectRatio = 1.6
+	
+	attachPanelTexture(panel, 0.88)
 
 	local panelStroke = Instance.new("UIStroke")
 	panelStroke.Color = Color3.fromRGB(255, 255, 255)
@@ -185,16 +211,23 @@ local function openRebirthGui()
 	closeBtn.Size = UDim2.fromScale(0.07, 0.12)
 	closeBtn.Position = UDim2.fromScale(0.97, 0.03)
 	closeBtn.AnchorPoint = Vector2.new(1, 0)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+	-- CHANGED: Updated background color and text color to match closeBtn in TimedRewards 
+	closeBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 	closeBtn.Text = "X"
-	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	closeBtn.TextColor3 = Color3.fromRGB(255, 90, 90)
 	closeBtn.Font = Enum.Font.DenkOne
 	closeBtn.TextScaled = true
 	closeBtn.Parent = panel
 	Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
+
+	-- CHANGED: Applied texture to the close button 
+	attachPanelTexture(closeBtn, 0.76)
+	
 	local xStroke = Instance.new("UIStroke")
-	xStroke.Color = Color3.fromRGB(0, 0, 0)
+	-- CHANGED: Updated stroke color to white and added ApplyStrokeMode to match 
+	xStroke.Color = Color3.fromRGB(255, 255, 255)
 	xStroke.Thickness = 3
+	xStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	xStroke.Parent = closeBtn
 	closeBtn.MouseButton1Click:Connect(closeRebirthGui)
 
@@ -329,7 +362,9 @@ local function openRebirthGui()
 	confirmBtn.Size = UDim2.fromScale(0.5, 0.12)
 	confirmBtn.Position = UDim2.fromScale(0.5, 0.85)
 	confirmBtn.AnchorPoint = Vector2.new(0.5, 0)
-	confirmBtn.BackgroundColor3 = canRebirth and Color3.fromRGB(220, 180, 0) or Color3.fromRGB(180, 40, 40)
+	confirmBtn.BackgroundColor3 = canRebirth
+		and Color3.fromRGB(220, 180, 0)
+		or Color3.fromRGB(180, 40, 40)
 	confirmBtn.Text = isMaxed and "MAXED" or "REBIRTH"
 	confirmBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	confirmBtn.Font = Enum.Font.DenkOne
@@ -351,23 +386,19 @@ local function openRebirthGui()
 		glowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		glowStroke.Parent = confirmBtn
 
-		TweenService:Create(
-			glowStroke,
+		TweenService:Create(glowStroke,
 			TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
 			{ Thickness = 8 }
 		):Play()
 
-		TweenService:Create(
-			confirmBtn,
+		TweenService:Create(confirmBtn,
 			TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
 			{ BackgroundColor3 = Color3.fromRGB(255, 215, 0) }
 		):Play()
 	end
 
 	confirmBtn.MouseButton1Click:Connect(function()
-		if not confirmBtn.Active then
-			return
-		end
+		if not confirmBtn.Active then return end
 		confirmBtn.Active = false
 		confirmBtn.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
 		confirmBtn.Text = "..."
@@ -389,11 +420,220 @@ end
 
 rebirthBtn.MouseButton1Click:Connect(openRebirthGui)
 
+-- ==========================================
+-- ADDED: Rewards button moved from TopSideButtonsScript
+-- This now uses createSquareButton so it scales/moves
+-- together with the other left-side buttons.
+-- ==========================================
+
+local rewardsBtn = createSquareButton(
+	"Rewards",
+	"REWARDS",
+	"99174903737611",
+	UDim2.new(0.01, 0, 0.55, 0),
+	Color3.fromRGB(30, 35, 45),
+	0.65
+)
+
+-- ADDED:
+-- Opens the already-existing rewards frame created
+-- inside TopSideButtonsScript.
+rewardsBtn.MouseButton1Click:Connect(function()
+	local rewardsGui = playerGui:FindFirstChild("WheelSpinGui")
+
+	if rewardsGui then
+		local rewardsFrame = rewardsGui:FindFirstChild("Frame")
+
+		-- Safer lookup so we only toggle the rewards frame
+		for _, child in ipairs(rewardsGui:GetChildren()) do
+			if child:IsA("Frame") and child ~= rewardsFrame then
+				if child:FindFirstChildWhichIsA("UIGridLayout", true) then
+					child.Visible = true
+					break
+				end
+			end
+		end
+	end
+end)
+
 local indexBtn = createSquareButton(
 	"Index",
 	"INDEX",
 	"97629410614205",
-	UDim2.new(0.01, 0, 0.65, 0),
+	UDim2.new(0.01, 0, 0.70, 0), -- ADDED: positioned under Index
 	Color3.fromRGB(35, 30, 35),
 	0.75
 )
+
+-- ==========================================
+-- INDEX SYSTEM FUNCTIONALITY
+-- ==========================================
+
+local Brainrots = require(game.ReplicatedStorage:WaitForChild("Brainrots"))
+local indexGuiOpen = false
+
+-- Color mapping for rarities to make the UI look polished
+local rarityColors = {
+	Common = Color3.fromRGB(85, 255, 85),
+	Rare = Color3.fromRGB(0, 170, 255),
+	Epic = Color3.fromRGB(170, 0, 255),
+	Legendary = Color3.fromRGB(255, 170, 0),
+	Mythic = Color3.fromRGB(255, 50, 50),
+	Secret = Color3.fromRGB(255, 255, 255),
+	Divine = Color3.fromRGB(209, 35, 232),
+	Exclusive = Color3.fromRGB(75, 0, 130)
+}
+
+local function closeIndexGui()
+	local existing = playerGui:FindFirstChild("IndexPopupGui")
+	if existing then existing:Destroy() end
+	indexGuiOpen = false
+end
+
+local function openIndexGui()
+	if indexGuiOpen then return end
+	indexGuiOpen = true
+
+	-- 1. Main ScreenGui
+	local screen = Instance.new("ScreenGui")
+	screen.Name = "IndexPopupGui"
+	screen.ResetOnSpawn = false
+	screen.IgnoreGuiInset = true
+	screen.Parent = playerGui
+
+	-- 2. Dark Backdrop
+	local backdrop = Instance.new("TextButton")
+	backdrop.Text = ""
+	backdrop.AutoButtonColor = false
+	backdrop.Size = UDim2.fromScale(1, 1)
+	backdrop.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	backdrop.BackgroundTransparency = 1
+	backdrop.Parent = screen
+
+	-- 3. Main Panel
+	local panel = Instance.new("Frame")
+	panel.Size = UDim2.fromScale(0.6, 0.7)
+	panel.Position = UDim2.fromScale(0.5, 0.5)
+	panel.AnchorPoint = Vector2.new(0.5, 0.5)
+	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+	panel.BackgroundTransparency = 0.1
+	panel.Parent = screen
+	Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 15)
+	attachPanelTexture(panel, 0.9) -- Using your existing texture function
+
+	local panelStroke = Instance.new("UIStroke")
+	panelStroke.Color = Color3.fromRGB(255, 255, 255)
+	panelStroke.Thickness = 3
+	panelStroke.Parent = panel
+
+	-- 4. Title (Vertically slimmed down)
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.fromScale(1, 0.08) -- Reduced from 0.08 to 0.05 for a very slim look
+	title.Position = UDim2.fromScale(0.5, 0.03) -- Tucked closer to the top edge
+	title.AnchorPoint = Vector2.new(0.5, 0)
+	title.BackgroundTransparency = 1
+	title.Text = "✧ BRAINROT INDEX ✧"
+	title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	title.Font = Enum.Font.DenkOne
+	title.TextScaled = true
+	title.Parent = panel
+
+	-- 5. Scrolling Frame (Adjusted to sit right under the slim header)
+	local scroll = Instance.new("ScrollingFrame")
+	scroll.Size = UDim2.fromScale(0.92, 0.82) -- Increased vertical space for cards
+	scroll.Position = UDim2.fromScale(0.5, 0.12) -- Moved up from 0.18 to 0.12
+	scroll.AnchorPoint = Vector2.new(0.5, 0)
+	scroll.BackgroundTransparency = 1
+	scroll.BorderSizePixel = 0
+	scroll.ScrollBarThickness = 6
+	scroll.ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255)
+	scroll.Parent = panel
+
+	-- Add a UIPadding to the scroll frame to ensure the top row has breathing room
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0, 10) -- Adds 10 pixels of space inside the top of the scroll
+	padding.Parent = scroll
+
+	local layout = Instance.new("UIGridLayout")
+	layout.CellSize = UDim2.fromOffset(130, 160)
+	layout.CellPadding = UDim2.fromOffset(15, 15)
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	layout.Parent = scroll
+
+	-- 6. Populate List from Brainrots Table
+	for _, data in ipairs(Brainrots) do
+		local card = Instance.new("Frame")
+		card.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+		card.BorderSizePixel = 0
+		card.Parent = scroll
+		Instance.new("UICorner", card).CornerRadius = UDim.new(0, 10)
+
+		local cardStroke = Instance.new("UIStroke")
+		cardStroke.Color = rarityColors[data.rarity] or Color3.fromRGB(255, 255, 255)
+		cardStroke.Thickness = 2
+		cardStroke.Parent = card
+
+		-- Brainrot Image (Uses imageId if it exists in your table, else placeholder)
+		local img = Instance.new("ImageLabel")
+		img.Size = UDim2.fromScale(0.7, 0.55)
+		img.Position = UDim2.fromScale(0.5, 0.1)
+		img.AnchorPoint = Vector2.new(0.5, 0)
+		img.BackgroundTransparency = 1
+		img.Image = data.imageId and ("rbxassetid://" .. tostring(data.imageId):match("%d+")) or "rbxassetid://10614205" -- Default icon
+		img.Parent = card
+
+		-- Name Label
+		local nameLbl = Instance.new("TextLabel")
+		nameLbl.Size = UDim2.fromScale(0.9, 0.18)
+		nameLbl.Position = UDim2.fromScale(0.5, 0.7)
+		nameLbl.AnchorPoint = Vector2.new(0.5, 0)
+		nameLbl.BackgroundTransparency = 1
+		nameLbl.Text = data.name:upper()
+		nameLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+		nameLbl.Font = Enum.Font.DenkOne
+		nameLbl.TextScaled = true
+		nameLbl.Parent = card
+
+		-- Rarity Label
+		local rarityLbl = Instance.new("TextLabel")
+		rarityLbl.Size = UDim2.fromScale(0.9, 0.12)
+		rarityLbl.Position = UDim2.fromScale(0.5, 0.88)
+		rarityLbl.AnchorPoint = Vector2.new(0.5, 0)
+		rarityLbl.BackgroundTransparency = 1
+		rarityLbl.Text = data.rarity
+		rarityLbl.TextColor3 = rarityColors[data.rarity] or Color3.fromRGB(200, 200, 200)
+		rarityLbl.Font = Enum.Font.DenkOne
+		rarityLbl.TextScaled = true
+		rarityLbl.Parent = card
+	end
+
+	-- 7. Close Button (Styled to match Rewards/Rebirth GUI)
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Size = UDim2.fromScale(0.07, 0.08) -- Matches Rebirth close button scale 
+	closeBtn.Position = UDim2.fromScale(0.97, 0.03) -- Matches Rebirth close button position 
+	closeBtn.AnchorPoint = Vector2.new(1, 0) 
+	closeBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20) -- Dark background 
+	closeBtn.Text = "X" 
+	closeBtn.TextColor3 = Color3.fromRGB(255, 90, 90) -- Reddish text 
+	closeBtn.Font = Enum.Font.DenkOne 
+	closeBtn.TextScaled = true 
+	closeBtn.Parent = panel 
+
+	Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8) 
+
+	-- Apply the panel texture to the close button 
+	attachPanelTexture(closeBtn, 0.76) 
+
+	local xStroke = Instance.new("UIStroke")
+	xStroke.Color = Color3.fromRGB(255, 255, 255) -- White border 
+	xStroke.Thickness = 3 
+	xStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border 
+	xStroke.Parent = closeBtn 
+
+	closeBtn.MouseButton1Click:Connect(closeIndexGui)
+
+	-- Update canvas size so it scrolls properly
+	scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 20)
+end
+
+indexBtn.MouseButton1Click:Connect(openIndexGui)

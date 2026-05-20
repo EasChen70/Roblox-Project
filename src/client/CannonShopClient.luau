@@ -19,6 +19,9 @@ local RING_RADIUS = Config.ShopRingRadius
 local OPEN_DIST = RING_RADIUS
 local CLOSE_DIST = RING_RADIUS + Config.ShopRingClosePadding
 local CASH_SOUND_ID = "rbxassetid://96267401354076"
+local ENABLED_BUTTON_COLOR = Color3.fromRGB(0, 170, 0)
+local DISABLED_BUTTON_COLOR = Color3.fromRGB(120, 120, 120)
+local PENDING_BUTTON_COLOR = Color3.fromRGB(150, 150, 150)
 
 local isOpen = false
 local manuallyClosed = false
@@ -178,18 +181,40 @@ local function costText(baseCost, currentPower, amount)
 	return cost == 0 and "FREE" or Util.formatMoney(cost)
 end
 
+local function canPurchaseUpgrade(currentPower, amount)
+	return currentPower + amount <= Config.MaxCannonPower
+end
+
+local function applyRowState(row, currentPower)
+	if row.label then
+		row.label.Text = "+" .. row.entry.amount .. " Power\n" .. currentPower .. " → " .. (currentPower + row.entry.amount)
+	end
+
+	local btn = row.btn
+	if not btn then
+		return
+	end
+
+	if canPurchaseUpgrade(currentPower, row.entry.amount) then
+		btn.BackgroundColor3 = ENABLED_BUTTON_COLOR
+		btn.Text = costText(row.entry.cost, currentPower, row.entry.amount)
+		btn.Active = true
+		btn.AutoButtonColor = true
+	else
+		btn.BackgroundColor3 = DISABLED_BUTTON_COLOR
+		btn.Text = "MAX"
+		btn.Active = false
+		btn.AutoButtonColor = false
+	end
+end
+
 local function refreshUI()
 	local power = getCannonPower()
 	if badgeLabel then
 		badgeLabel.Text = "💥POWER:  " .. tostring(power)
 	end
 	for _, row in rowRefs do
-		if row.label then
-			row.label.Text = "+" .. row.entry.amount .. " Power\n" .. power .. " → " .. (power + row.entry.amount)
-		end
-		if row.btn and row.btn.Active then
-			row.btn.Text = costText(row.entry.cost, power, row.entry.amount)
-		end
+		applyRowState(row, power)
 	end
 end
 
@@ -238,7 +263,7 @@ local function buildRow(parent, entry)
 	btn.Size = UDim2.fromScale(0.3, 0.6)
 	btn.Position = UDim2.fromScale(0.95, 0.5)
 	btn.AnchorPoint = Vector2.new(1, 0.5)
-	btn.BackgroundColor3 = purchasePending and Color3.fromRGB(150, 150, 150) or Color3.fromRGB(0, 170, 0)
+	btn.BackgroundColor3 = purchasePending and PENDING_BUTTON_COLOR or ENABLED_BUTTON_COLOR
 	btn.Text = purchasePending and "..." or costText(entry.cost, power, entry.amount)
 	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	btn.Font = Enum.Font.DenkOne
@@ -264,7 +289,13 @@ local function buildRow(parent, entry)
 			return
 		end
 
-		local cost = computeCost(entry.cost, getCannonPower(), entry.amount)
+		local currentPower = getCannonPower()
+		if not canPurchaseUpgrade(currentPower, entry.amount) then
+			refreshUI()
+			return
+		end
+
+		local cost = computeCost(entry.cost, currentPower, entry.amount)
 		local playerMoney = player.leaderstats.Money.Value
 
 		if playerMoney >= cost then
@@ -279,9 +310,10 @@ local function buildRow(parent, entry)
 				sound:Destroy()
 			end)
 
-			btn.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
+			btn.BackgroundColor3 = PENDING_BUTTON_COLOR
 			btn.Text = "..."
 			btn.Active = false
+			btn.AutoButtonColor = false
 
 			Remotes.UpgradeCannon:FireServer(entry.amount)
 
@@ -289,25 +321,20 @@ local function buildRow(parent, entry)
 				if purchasePending then
 					purchasePending = false
 					if btn and btn.Parent then
-						btn.Active = true
-						btn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
-						btn.Text = costText(entry.cost, getCannonPower(), entry.amount)
+						refreshUI()
 					end
 				end
 			end)
 		else
-			local oldText = btn.Text
-			local oldColor = btn.BackgroundColor3
 			btn.Active = false
+			btn.AutoButtonColor = false
 			btn.Text = "X"
 			btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 			btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 
 			task.delay(1, function()
 				if btn and btn.Parent then
-					btn.Text = oldText
-					btn.BackgroundColor3 = oldColor
-					btn.Active = true
+					refreshUI()
 				end
 			end)
 		end
@@ -332,13 +359,6 @@ local function onPowerChanged()
 	end
 	purchasePending = false
 	refreshUI()
-	for _, row in rowRefs do
-		if row.btn then
-			row.btn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
-			row.btn.Text = costText(row.entry.cost, getCannonPower(), row.entry.amount)
-			row.btn.Active = true
-		end
-	end
 	updateCannonBillboards()
 end
 
@@ -485,6 +505,7 @@ local function openShop()
 	end
 
 	scroll.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y + 25)
+	refreshUI()
 end
 
 -- ── Start ─────────────────────────────────────────────────────────────────────

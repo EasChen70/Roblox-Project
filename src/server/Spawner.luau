@@ -15,6 +15,7 @@ local ZONES = {
     { zone = "SpawnZonesMythic",      models = "MythicBrainRotModels",       rarity = "Mythic",       inner = "MythicSpawnZone" },
     { zone = "SpawnZonesSecret",      models = "SecretBrainRotModels",       rarity = "Secret",       inner = "SecretSpawnZone" },
     { zone = "SpawnZonesDivine",      models = "DivineBrainRotModels",       rarity = "Divine",       inner = "DivineSpawnZone" },
+    { zone = "SpawnZonesAncient",     models = "AncientBrainRotModels",      rarity = "Ancient",      inner = "AncientSpawnZone" },
 }
 
 local brainrotsByRarity = {}
@@ -35,7 +36,24 @@ local function rollMutation()
         return "Diamond"
     elseif roll < Config.MutationDiamondChance + Config.MutationGoldChance then
         return "Gold"
-    end
+	end
+	
+	-- [[NEW: Radioactive Event Logic]] --
+	-- We check ReplicatedStorage for the BoolValue created by the Event Manager.
+	-- This ensures Radioactive brainrots ONLY spawn during the 10-minute active window.
+	local isEventActive = ReplicatedStorage:FindFirstChild("IsRadioactiveEventActive")
+	if isEventActive and isEventActive.Value == true then
+
+		-- Calculate the threshold by adding the Radioactive chance to the existing chances.
+		-- This prevents the Radioactive roll from stealing the 0-7.5% rolls meant for Diamond/Gold.
+		local radioactiveThreshold = Config.MutationDiamondChance + Config.MutationGoldChance + Config.MutationRadioactiveChance
+
+		if roll < radioactiveThreshold then
+			return "Radioactive"
+		end
+	end
+	-- [[END NEW]] --
+	
     return "None"
 end
 

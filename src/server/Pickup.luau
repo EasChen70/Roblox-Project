@@ -32,6 +32,7 @@ local modelFolders = {
 	Mythic = ServerStorage:WaitForChild("MythicBrainRotModels"),
 	Secret = ServerStorage:WaitForChild("SecretBrainRotModels"),
 	Divine = ServerStorage:WaitForChild("DivineBrainRotModels"),
+	Ancient = ServerStorage:WaitForChild("AncientBrainRotModels"),
 	Exclusive = ServerStorage:FindFirstChild("ExclusiveBrainRotModels"),
 }
 
@@ -941,6 +942,7 @@ local spawnZoneFolders = {
 	game.Workspace:WaitForChild("SpawnZonesMythic"),
 	game.Workspace:WaitForChild("SpawnZonesSecret"),
 	game.Workspace:WaitForChild("SpawnZonesDivine"),
+	game.Workspace:WaitForChild("SpawnZonesAncient"),
 	game.Workspace:WaitForChild("Map"),
 }
 

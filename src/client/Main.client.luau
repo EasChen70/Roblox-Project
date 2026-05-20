@@ -288,7 +288,7 @@ if player.Character then
 end
 
 ProximityPromptService.PromptShown:Connect(function(prompt)
-	if prompt.ActionText ~= "Pick Up" and prompt.ActionText ~= "Sell" then
+	if prompt.ActionText ~= "Pick Up" and prompt.ActionText ~= "Swap" and prompt.ActionText ~= "Sell" then
 		return
 	end
 

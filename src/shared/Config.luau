@@ -31,6 +31,8 @@ local Config = {
 	MaxInventory = 10,
 	PickupHoldDuration = 0.6,
 	PickupRange = 8,
+	PlacedPickupPromptHeight = 2.5,
+	PlacedSellPromptHeight = 6,
 	CarryOffset = Vector3.new(0, 3, 0),
 	CarryRotation = CFrame.Angles(0, math.rad(180), 0),
 	CarryAnimationId = "rbxassetid://93613705528273",
@@ -46,6 +48,22 @@ local Config = {
 			placedCorrection = CFrame.Angles(0, math.rad(240), 0)
 				* CFrame.Angles(0, 0, math.rad(180))
 				* CFrame.new(-0.8, 0, 0),
+		},
+		["Alessio"] = {
+			carryCorrection = CFrame.Angles(0, math.rad(180), 0),
+			placedCorrection = CFrame.Angles(0, math.rad(180), 0),
+		},
+		["Spaghetti Tualetti"] = {
+			carryCorrection = CFrame.Angles(0, math.rad(180), 0),
+			placedCorrection = CFrame.Angles(0, math.rad(180), 0),
+		},
+		["Torrtuginni Dragonfrutini"] = {
+			carryCorrection = CFrame.Angles(0, math.rad(180), 0),
+			placedCorrection = CFrame.Angles(0, math.rad(180), 0),
+		},
+		["Dragon Cannelloni"] = {
+			carryCorrection = CFrame.Angles(0, math.rad(180), 0),
+			placedCorrection = CFrame.Angles(0, math.rad(180), 0),
 		},
 	},
 
@@ -63,7 +81,7 @@ local Config = {
 
 	--CannonShop
 	CannonCostScale = 1.15, -- cost multiplier per power level owned
-	MaxCannonPower = 130, -- set to whatever cannon launch physics top-end is
+	MaxCannonPower = 150, -- set to whatever cannon launch physics top-end is
 	CannonUpgradeCosts = {
 		{ amount = 1, cost = 11000 },
 		{ amount = 5, cost = 55000 },
@@ -72,10 +90,22 @@ local Config = {
 
 	MutationGoldChance = 0.05,
 	MutationDiamondChance = 0.025,
+	
+	-- [[NEW: Radioactive Event configuration values]] --
+	-- This keeps your timing and chances organized in one place
+	MutationRadioactiveChance = 0.15, -- 15% chance during the event
+	RadioactiveEventCooldown = 30 * 60, -- 30 minutes in seconds
+	RadioactiveEventDuration = 5 * 60, -- 5 minutes in seconds
+	-- [[END NEW]] --
+	
 	MutationMultipliers = {
 		None = 1.0,
 		Gold = 1.5,
 		Diamond = 2.0,
+		-- [[NEW: Added Radioactive income multiplier]] --
+		-- Brainrots.getIncomeWithMutation will automatically use this!
+		Radioactive = 2.5, 
+		-- [[END NEW]] --
 	},
 
 	-- Rebirth
@@ -89,6 +119,8 @@ local Config = {
 		{ rebirth = 6, power = 100, multiplier = 4.0 },
 		{ rebirth = 7, power = 110, multiplier = 4.5 },
 		{ rebirth = 8, power = 120, multiplier = 5.0 },
+		{ rebirth = 9, power = 130, multiplier = 5.5 },
+		{ rebirth = 10, power = 140, multiplier = 6.0 },
 	},
 }
 

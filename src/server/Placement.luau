@@ -39,6 +39,46 @@ local function getPlacedCorrection(name)
 	return (transformData and transformData.placedCorrection) or CFrame.new()
 end
 
+local function getPlacedBrainrotData(model)
+	if not model then
+		return nil
+	end
+
+	local name = model:GetAttribute("Name") or model.Name
+	local rarity = model:GetAttribute("Rarity")
+	if not rarity then
+		return nil
+	end
+
+	return {
+		name = name,
+		rarity = rarity,
+		baseIncome = model:GetAttribute("BaseIncome") or getRegistryBaseIncome(name) or model:GetAttribute("IncomePerSec") or 0,
+		level = model:GetAttribute("Level") or 1,
+		mutation = model:GetAttribute("Mutation") or "None",
+	}
+end
+
+local function getEquippedToolPlacementData(tool)
+	if not tool then
+		return nil
+	end
+
+	local name = tool.Name
+	local rarity = tool:GetAttribute("Rarity")
+	if not rarity then
+		return nil
+	end
+
+	return {
+		name = name,
+		rarity = rarity,
+		baseIncome = tool:GetAttribute("BaseIncome") or getRegistryBaseIncome(name) or tool:GetAttribute("IncomePerSec") or 0,
+		level = tool:GetAttribute("Level") or 1,
+		mutation = tool:GetAttribute("Mutation") or "None",
+	}
+end
+
 local modelFolders = {
 	Common = ServerStorage:WaitForChild("CommonBrainRotModels"),
 	Rare = ServerStorage:WaitForChild("RareBrainRotModels"),
@@ -47,6 +87,7 @@ local modelFolders = {
 	Mythic = ServerStorage:WaitForChild("MythicBrainRotModels"),
 	Secret = ServerStorage:WaitForChild("SecretBrainRotModels"),
 	Divine = ServerStorage:WaitForChild("DivineBrainRotModels"),
+	Ancient = ServerStorage:WaitForChild("AncientBrainRotModels"),
 	Exclusive = ServerStorage:FindFirstChild("ExclusiveBrainRotModels"),
 }
 
@@ -76,12 +117,105 @@ local function isSlotOccupied(slot)
 	return false
 end
 
-local function createPromptAttachment(parentPart, name, yOffset)
+local function createPromptAttachment(model, name, heightFromBottom)
+	local parentPart = model and model.PrimaryPart
+	if not parentPart then
+		return nil
+	end
+
+	local boundsCFrame, boundsSize = model:GetBoundingBox()
+	local bottomY = boundsCFrame.Position.Y - boundsSize.Y * 0.5
+	local worldAnchorPosition = Vector3.new(boundsCFrame.Position.X, bottomY + heightFromBottom, boundsCFrame.Position.Z)
+	local localAnchorPosition = parentPart.CFrame:PointToObjectSpace(worldAnchorPosition)
+
 	local att = Instance.new("Attachment")
 	att.Name = name
-	att.Position = Vector3.new(0, yOffset, 0)
+	att.Position = localAnchorPosition
 	att.Parent = parentPart
 	return att
+end
+
+local function destroyUpgradeBillboard(slot)
+	local upgradeBillboard = slot:FindFirstChild("UpgradeBillboard")
+	if upgradeBillboard then
+		upgradeBillboard:Destroy()
+	end
+end
+
+local function preparePlacedClone(slot, itemData)
+	local name = itemData.name
+	local rarity = itemData.rarity
+	local baseIncome = itemData.baseIncome or getRegistryBaseIncome(name) or itemData.incomePerSec or 0
+	local level = itemData.level or 1
+	local mutation = itemData.mutation or "None"
+
+	local folderName = getModelFolderName(rarity, mutation)
+	local folder = ServerStorage:FindFirstChild(folderName) or modelFolders[rarity]
+	local template = folder and folder:FindFirstChild(name)
+	if not template then
+		return nil, nil
+	end
+
+	local clone = template:Clone()
+	if not clone.PrimaryPart then
+		clone:Destroy()
+		return nil, nil
+	end
+
+	clone:SetAttribute("Name", name)
+	clone:SetAttribute("Rarity", rarity)
+	clone:SetAttribute("Placed", true)
+	clone:SetAttribute("Mutation", mutation)
+
+	for _, part in clone:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = true
+			part.CanCollide = false
+			part.CanQuery = false
+		end
+	end
+
+	local placementCFrame = Placement.getPlacementCFrame(name, slot)
+	if not placementCFrame then
+		clone:Destroy()
+		return nil, nil
+	end
+
+	clone:PivotTo(placementCFrame)
+
+	return clone, {
+		name = name,
+		rarity = rarity,
+		baseIncome = baseIncome,
+		level = level,
+		mutation = mutation,
+	}
+end
+
+local function attachPlacedClone(clone, slot, base, itemData)
+	clone.Parent = slot
+
+	local currentIncome = Brainrots.getIncomeWithMutation(
+		itemData.baseIncome,
+		itemData.rarity,
+		itemData.level,
+		itemData.mutation
+	)
+	BrainrotUI.createBillboard(clone, {
+		name = itemData.name,
+		rarity = itemData.rarity,
+		incomePerSec = currentIncome,
+		level = itemData.level,
+		maxLevel = Brainrots.MaxLevel,
+		mutation = itemData.mutation,
+	})
+
+	Placement.createSlotPrompts(clone, slot, base, {
+		name = itemData.name,
+		rarity = itemData.rarity,
+		baseIncome = itemData.baseIncome,
+		level = itemData.level,
+	})
 end
 
 function Placement.getPlacementCFrame(brainrotName, slot)
@@ -120,20 +254,57 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 	clone:SetAttribute("BaseIncome", baseIncome)
 	clone:SetAttribute("IncomePerSec", currentIncome)
 
-	-- PICKUP prompt (preserves level)
+	-- PICKUP / SWAP prompt
 	local pickupPrompt = Instance.new("ProximityPrompt")
 	pickupPrompt.ActionText = "Pick Up"
 	pickupPrompt.ObjectText = name
 	pickupPrompt.HoldDuration = Config.PickupHoldDuration
 	pickupPrompt.MaxActivationDistance = 8
 	pickupPrompt.RequiresLineOfSight = false
-	pickupPrompt.Parent = createPromptAttachment(clone.PrimaryPart, "PickupAttachment", 2.5)
+	pickupPrompt.Parent = createPromptAttachment(clone, "PickupAttachment", Config.PlacedPickupPromptHeight)
 
 	pickupPrompt.Triggered:Connect(function(triggerPlayer)
 		withDebounce(slot, function()
 			if Base.getOwner(base) ~= triggerPlayer then
 				return
 			end
+
+			local equippedTool = Pickup.getInventoryTool(triggerPlayer)
+			if equippedTool then
+				local outgoingData = getPlacedBrainrotData(clone)
+				local incomingData = getEquippedToolPlacementData(equippedTool)
+				if not outgoingData or not incomingData then
+					return
+				end
+
+				local incomingClone, normalizedIncomingData = preparePlacedClone(slot, incomingData)
+				if not incomingClone then
+					return
+				end
+
+				Pickup.removeFromInventory(triggerPlayer, equippedTool)
+				destroyUpgradeBillboard(slot)
+				clone:Destroy()
+				attachPlacedClone(incomingClone, slot, base, normalizedIncomingData)
+				equippedTool:Destroy()
+
+				Pickup.giveItem(
+					triggerPlayer,
+					outgoingData.name,
+					outgoingData.rarity,
+					outgoingData.baseIncome,
+					outgoingData.level,
+					outgoingData.mutation
+				)
+
+				if onDataChangedCallback then
+					onDataChangedCallback(triggerPlayer)
+				end
+
+				Placement.refreshPrompts(triggerPlayer)
+				return
+			end
+
 			if Pickup.isCarrying(triggerPlayer) then
 				return
 			end
@@ -146,12 +317,7 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 			end
 
 			clone:Destroy()
-
-			-- Clean up upgrade billboard for this slot
-			local ub = slot:FindFirstChild("UpgradeBillboard")
-			if ub then
-				ub:Destroy()
-			end
+			destroyUpgradeBillboard(slot)
 
 			if onDataChangedCallback then
 				onDataChangedCallback(triggerPlayer)
@@ -170,7 +336,7 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 	sellPrompt.MaxActivationDistance = 8
 	sellPrompt.RequiresLineOfSight = false
 	sellPrompt.KeyboardKeyCode = Enum.KeyCode.F
-	sellPrompt.Parent = createPromptAttachment(clone.PrimaryPart, "SellAttachment", 6)
+	sellPrompt.Parent = createPromptAttachment(clone, "SellAttachment", Config.PlacedSellPromptHeight)
 
 	sellPrompt.Triggered:Connect(function(triggerPlayer)
 		withDebounce(slot, function()
@@ -201,12 +367,7 @@ function Placement.createSlotPrompts(clone, slot, base, data)
 			end
 
 			clone:Destroy()
-
-			-- Clean up upgrade billboard for this slot
-			local ub = slot:FindFirstChild("UpgradeBillboard")
-			if ub then
-				ub:Destroy()
-			end
+			destroyUpgradeBillboard(slot)
 
 			if onDataChangedCallback then
 				onDataChangedCallback(triggerPlayer)
@@ -323,64 +484,17 @@ function Placement.setup()
 						return
 					end
 
-					local name = tool.Name
-					local rarity = tool:GetAttribute("Rarity")
-					local baseIncome = tool:GetAttribute("BaseIncome") or getRegistryBaseIncome(name) or tool:GetAttribute("IncomePerSec")
-					local level = tool:GetAttribute("Level") or 1
-
-					local mutation = tool:GetAttribute("Mutation") or "None"
-					local folderName = getModelFolderName(rarity, mutation)
-					local folder = ServerStorage:FindFirstChild(folderName) or modelFolders[rarity]
-					local template = folder and folder:FindFirstChild(name)
-					if not template then
+					local incomingData = getEquippedToolPlacementData(tool)
+					if not incomingData then
 						return
 					end
 
-					local clone = template:Clone()
-
-					if not clone.PrimaryPart then
+					local clone, normalizedIncomingData = preparePlacedClone(slot, incomingData)
+					if not clone then
 						return
 					end
 
-					clone:SetAttribute("Name", name)
-					clone:SetAttribute("Rarity", rarity)
-					clone:SetAttribute("Placed", true)
-					clone:SetAttribute("Mutation", mutation)
-
-					for _, part in clone:GetDescendants() do
-						if part:IsA("BasePart") then
-							part.Anchored = true
-							part.CanCollide = false
-							part.CanQuery = false
-						end
-					end
-
-					local placementCFrame = Placement.getPlacementCFrame(name, slot)
-					if not placementCFrame then
-						return
-					end
-					clone:PivotTo(placementCFrame)
-
-					clone.Parent = slot
-
-					-- Compute current income at this level for billboard display
-					local currentIncome = Brainrots.getIncomeWithMutation(baseIncome, rarity, level, mutation)
-					BrainrotUI.createBillboard(clone, {
-						name = name,
-						rarity = rarity,
-						incomePerSec = currentIncome,
-						level = level,
-						maxLevel = Brainrots.MaxLevel,
-						mutation = mutation,
-					})
-
-					-- Wire pickup + sell + upgrade prompts via shared helper
-					Placement.createSlotPrompts(clone, slot, base, {
-						name = name,
-						rarity = rarity,
-						baseIncome = baseIncome,
-						level = level,
-					})
+					attachPlacedClone(clone, slot, base, normalizedIncomingData)
 
 					Pickup.removeFromInventory(player, tool)
 					tool:Destroy()
@@ -431,7 +545,18 @@ function Placement.refreshPrompts(player)
 			continue
 		end
 
-		prompt.Enabled = Pickup.isItemEquipped(player) and not isSlotOccupied(slot)
+		local hasEquippedItem = Pickup.isItemEquipped(player)
+		local occupied = isSlotOccupied(slot)
+
+		prompt.Enabled = hasEquippedItem and not occupied
+
+		if occupied then
+			local pickupAttachment = slot:FindFirstChild("PickupAttachment", true)
+			local pickupPrompt = pickupAttachment and pickupAttachment:FindFirstChildOfClass("ProximityPrompt")
+			if pickupPrompt then
+				pickupPrompt.ActionText = hasEquippedItem and "Swap" or "Pick Up"
+			end
+		end
 	end
 end
 

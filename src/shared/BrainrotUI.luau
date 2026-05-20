@@ -14,6 +14,7 @@ local RarityColors = {
 	Mythic = Color3.fromRGB(255, 50, 50),
 	Secret = Color3.fromRGB(50, 50, 50),
 	Divine = Color3.fromRGB(209, 35, 232),
+	Ancient = Color3.fromRGB(220, 20, 60),
 	Exclusive = Color3.fromRGB(75, 0, 130),
 }
 
@@ -22,6 +23,7 @@ local UPGRADE_PINK = Color3.fromRGB(255, 60, 160)
 local UPGRADE_TEXT = Color3.fromRGB(255, 255, 255)
 local CLAIM_GOLD = Color3.fromRGB(255, 215, 0)
 local CLAIMED_GREEN = Color3.fromRGB(85, 255, 85)
+local LONG_NAME_WRAP_THRESHOLD = 20
 
 local function addTextSizeConstraint(label, minSize, maxSize)
 	if not minSize and not maxSize then
@@ -52,6 +54,43 @@ local function makeLabel(name, text, color, order, minSize, maxSize, strokeThick
 
 	addTextSizeConstraint(label, minSize, maxSize)
 
+	return label
+end
+
+local function formatBillboardDisplayName(name)
+	if type(name) ~= "string" then
+		return ""
+	end
+	if #name <= LONG_NAME_WRAP_THRESHOLD then
+		return name
+	end
+
+	local midpoint = #name / 2
+	local bestSplitIndex = nil
+	local bestDistance = math.huge
+
+	for index = 1, #name do
+		if string.sub(name, index, index) == " " then
+			local distance = math.abs(index - midpoint)
+			if distance < bestDistance then
+				bestDistance = distance
+				bestSplitIndex = index
+			end
+		end
+	end
+
+	if not bestSplitIndex then
+		return name
+	end
+
+	local firstLine = string.sub(name, 1, bestSplitIndex - 1)
+	local secondLine = string.sub(name, bestSplitIndex + 1)
+	return firstLine .. "\n" .. secondLine
+end
+
+local function makeNameLabel(text, order, minSize, maxSize, strokeThickness)
+	local label = makeLabel("Name", formatBillboardDisplayName(text), Color3.fromRGB(255, 255, 255), order, minSize, maxSize, strokeThickness)
+	label.TextWrapped = true
 	return label
 end
 
@@ -111,6 +150,29 @@ local function ensureClaimAttachment(model)
 	return attachment
 end
 
+local function ensureBoundsBillboardAttachment(model, attachmentName, extraHeight)
+	local primaryPart = model.PrimaryPart
+	if not primaryPart then
+		return nil
+	end
+
+	local existing = primaryPart:FindFirstChild(attachmentName)
+	local boundsCFrame, boundsSize = model:GetBoundingBox()
+	local worldAnchorPosition = boundsCFrame.Position + Vector3.new(0, boundsSize.Y * 0.5 + extraHeight, 0)
+	local localAnchorPosition = primaryPart.CFrame:PointToObjectSpace(worldAnchorPosition)
+
+	if existing and existing:IsA("Attachment") then
+		existing.Position = localAnchorPosition
+		return existing
+	end
+
+	local attachment = Instance.new("Attachment")
+	attachment.Name = attachmentName
+	attachment.Position = localAnchorPosition
+	attachment.Parent = primaryPart
+	return attachment
+end
+
 local function formatLevelText(level, maxLevel)
 	if maxLevel and level >= maxLevel then
 		return "Max Level"
@@ -126,19 +188,43 @@ local function applySecretStrokeStyle(label)
 	end
 end
 
+local function applyAncientGradientStyle(label)
+	if not label then
+		return
+	end
+
+	local gradient = Instance.new("UIGradient")
+	gradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0.00, Color3.fromRGB(220, 20, 60)),
+		ColorSequenceKeypoint.new(0.55, Color3.fromRGB(120, 24, 32)),
+		ColorSequenceKeypoint.new(1.00, Color3.fromRGB(92, 51, 23)),
+	})
+	gradient.Parent = label
+end
+
 function BrainrotUI.createBillboard(model, data)
 	local rarity = data.rarity or "Common"
 	local rarityColor = RarityColors[rarity] or RarityColors.Common
 	local level = data.level
 	local maxLevel = data.maxLevel
 
-	local billboard, frame = createBillboardGui(model, nil, false)
+	local billboard, frame
+	if rarity == "Ancient" then
+		local ancientAttachment = ensureBoundsBillboardAttachment(model, "AncientBillboardAnchor", 4)
+		if ancientAttachment then
+			billboard, frame = createBillboardGui(model, Vector3.new(0, 0, 0), false, ancientAttachment, model.PrimaryPart)
+		else
+			billboard, frame = createBillboardGui(model, nil, false)
+		end
+	else
+		billboard, frame = createBillboardGui(model, nil, false)
+	end
 	if level then
 		billboard.Size = UDim2.fromScale(8, 6)
 	end
 	local mutation = data.mutation or "None"
 	if mutation ~= "None" then
-		local mutColor = mutation == "Diamond" and Color3.fromRGB(100, 220, 255) or Color3.fromRGB(255, 200, 50)
+		local mutColor = mutation == "Diamond" and Color3.fromRGB(100, 220, 255) or mutation == "Gold" and Color3.fromRGB(255, 200, 50) or Color3.fromRGB(0, 85, 0)
 		local mutLabel = makeLabel("Mutation", "✦ " .. mutation:upper(), mutColor, -1)
 		mutLabel.Parent = frame
 	end
@@ -150,11 +236,14 @@ function BrainrotUI.createBillboard(model, data)
 	local incomeLabel = makeLabel("Income", Util.formatMoney(data.incomePerSec) .. "/s", Color3.fromRGB(85, 255, 85), 1)
 	incomeLabel.Parent = frame
 
-	local nameLabel = makeLabel("Name", data.name, Color3.fromRGB(255, 255, 255), 2)
+	local nameLabel = makeNameLabel(data.name, 2)
 	nameLabel.Parent = frame
 
 	local rarityLabel = makeLabel("Rarity", rarity, rarityColor, 3)
 	rarityLabel.Parent = frame
+	if rarity == "Ancient" then
+		applyAncientGradientStyle(rarityLabel)
+	end
 	if rarity == "Secret" then
 		applySecretStrokeStyle(rarityLabel)
 	end
@@ -200,11 +289,14 @@ function BrainrotUI.createClaimBillboard(model, data)
 	)
 	incomeLabel.Parent = frame
 
-	local nameLabel = makeLabel("Name", data.name or "", Color3.fromRGB(255, 255, 255), 2, 12, 20, 1)
+	local nameLabel = makeNameLabel(data.name or "", 2, 12, 20, 1)
 	nameLabel.Parent = frame
 
 	local rarityLabel = makeLabel("Rarity", rarity, rarityColor, 3, 12, 20, 1)
 	rarityLabel.Parent = frame
+	if rarity == "Ancient" then
+		applyAncientGradientStyle(rarityLabel)
+	end
 	if rarity == "Secret" then
 		applySecretStrokeStyle(rarityLabel)
 	end
@@ -239,11 +331,14 @@ function BrainrotUI.createClaimedBillboard(model, data)
 	claimedLabel.Size = UDim2.fromScale(1, 0.24)
 	claimedLabel.Parent = frame
 
-	local nameLabel = makeLabel("Name", data.name or "", Color3.fromRGB(255, 255, 255), 1, 12, 20, 1)
+	local nameLabel = makeNameLabel(data.name or "", 1, 12, 20, 1)
 	nameLabel.Parent = frame
 
 	local rarityLabel = makeLabel("Rarity", rarity, rarityColor, 2, 12, 20, 1)
 	rarityLabel.Parent = frame
+	if rarity == "Ancient" then
+		applyAncientGradientStyle(rarityLabel)
+	end
 	if rarity == "Secret" then
 		applySecretStrokeStyle(rarityLabel)
 	end
@@ -286,12 +381,18 @@ function BrainrotUI.createWorldBillboard(model, data)
     local rarity = data.rarity or "Common"
     local rarityColor = RarityColors[rarity] or RarityColors.Common
 
-    local billboard, frame = createBillboardGui(model, Vector3.new(0, 12, 0), true)
+    local billboard, frame
+    if rarity == "Ancient" then
+        local ancientAttachment = ensureBoundsBillboardAttachment(model, "AncientWorldBillboardAnchor", 4)
+        billboard, frame = createBillboardGui(model, Vector3.new(0, 0, 0), true, ancientAttachment, model.PrimaryPart)
+    else
+        billboard, frame = createBillboardGui(model, Vector3.new(0, 12, 0), true)
+    end
     billboard.Size = UDim2.fromScale(8, 6)
     
     local mutation = data.mutation or "None"
     if mutation ~= "None" then
-        local mutColor = mutation == "Diamond" and Color3.fromRGB(100, 220, 255) or Color3.fromRGB(255, 200, 50)
+		local mutColor = mutation == "Diamond" and Color3.fromRGB(100, 220, 255) or mutation == "Gold" and Color3.fromRGB(255, 200, 50) or Color3.fromRGB(0, 85, 0)
         local mutLabel = makeLabel("Mutation", "✦ " .. mutation:upper(), mutColor, -1)
         mutLabel.Parent = frame
     end
@@ -307,11 +408,15 @@ function BrainrotUI.createWorldBillboard(model, data)
     local incomeLabel = makeLabel("Income", Util.formatMoney(data.incomePerSec) .. "/s", Color3.fromRGB(85, 255, 85), 1)
     incomeLabel.Parent = frame
 
-    local nameLabel = makeLabel("Name", data.name, Color3.fromRGB(255, 255, 255), 2)
+    local nameLabel = makeNameLabel(data.name, 2)
     nameLabel.Parent = frame
 
     local rarityLabel = makeLabel("Rarity", rarity, rarityColor, 3)
     rarityLabel.Parent = frame
+
+    if rarity == "Ancient" then
+        applyAncientGradientStyle(rarityLabel)
+    end
 
     if rarity == "Secret" then
         applySecretStrokeStyle(rarityLabel)
