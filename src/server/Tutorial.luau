@@ -179,6 +179,7 @@ local function ensurePlayerState(player)
 	state = {
 		tutorialComplete = tutorialComplete == true,
 		flags = tutorialStepFlags or {},
+		suppressedAnalyticsFlags = {},
 	}
 
 	runtimeState[player] = state
@@ -221,12 +222,18 @@ markStepComplete = function(player, stepId, suppressAnalytics)
 	end
 
 	state.flags[flagId] = true
+	if suppressAnalytics then
+		state.suppressedAnalyticsFlags[flagId] = true
+	else
+		state.suppressedAnalyticsFlags[flagId] = nil
+	end
+
 	if not getCurrentStepId(state.flags) then
 		state.tutorialComplete = true
 	end
 
 	if not suppressAnalytics then
-		FunnelAnalytics.logTutorialStep(player, stepId)
+		FunnelAnalytics.syncTutorialProgress(player, state.flags, state.suppressedAnalyticsFlags)
 	end
 
 	PlayerData.setTutorialState(player, state.tutorialComplete, state.flags)
@@ -272,10 +279,25 @@ local function loadPlayer(player)
 	end
 
 	refreshAndSyncPlayer(player)
+	if not state.tutorialComplete then
+		FunnelAnalytics.primeTutorialProgress(
+			player,
+			state.flags,
+			state.suppressedAnalyticsFlags
+		)
+	end
 
 	task.delay(1, function()
 		if player.Parent then
 			refreshAndSyncPlayer(player)
+			local refreshedState = runtimeState[player]
+			if refreshedState and not refreshedState.tutorialComplete then
+				FunnelAnalytics.primeTutorialProgress(
+					player,
+					refreshedState.flags,
+					refreshedState.suppressedAnalyticsFlags
+				)
+			end
 		end
 	end)
 end

@@ -156,7 +156,10 @@ local spinSoundId = "rbxassetid://5406934065"
 
 -- TIMER VARIABLES
 local SPIN_COOLDOWN = 600 -- 15 minutes in seconds
+local SPIN_REQUEST_TIMEOUT = 2
 local isSpinning = false -- State check for the button text
+local spinRequestPending = false
+local spinRequestToken = 0
 
 local wheelScreen = Instance.new("ScreenGui")
 wheelScreen.Name = "WheelSpinGui"
@@ -189,6 +192,93 @@ local function applyShopStyle(parent, transparency)
 	end
 end
 
+local function createCartoonyAlertBadge(parent)
+	local badge = Instance.new("Frame")
+	badge.Name = "ReadyAlertBadge"
+	badge.AnchorPoint = Vector2.new(1, 0)
+	badge.BackgroundTransparency = 1
+	badge.Visible = false
+	badge.Rotation = -4
+	badge.ZIndex = 50
+	badge.Parent = parent
+
+	local scale = Instance.new("UIScale")
+	scale.Scale = 1
+	scale.Parent = badge
+
+	local shadow = Instance.new("Frame")
+	shadow.Name = "Shadow"
+	shadow.Size = UDim2.fromScale(0.96, 0.96)
+	shadow.Position = UDim2.fromScale(0.06, 0.06)
+	shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	shadow.BackgroundTransparency = 0.2
+	shadow.BorderSizePixel = 0
+	shadow.ZIndex = 50
+	shadow.Parent = badge
+	Instance.new("UICorner", shadow).CornerRadius = UDim.new(1, 0)
+
+	local bubble = Instance.new("Frame")
+	bubble.Name = "Bubble"
+	bubble.Size = UDim2.fromScale(0.92, 0.92)
+	bubble.BackgroundColor3 = Color3.fromRGB(235, 56, 52)
+	bubble.BorderSizePixel = 0
+	bubble.Rotation = 3
+	bubble.ZIndex = 51
+	bubble.Parent = badge
+	Instance.new("UICorner", bubble).CornerRadius = UDim.new(1, 0)
+
+	local alertText = Instance.new("TextLabel")
+	alertText.Name = "AlertText"
+	alertText.Size = UDim2.fromScale(0.68, 0.68)
+	alertText.Position = UDim2.fromScale(0.5, 0.48)
+	alertText.AnchorPoint = Vector2.new(0.5, 0.5)
+	alertText.BackgroundTransparency = 1
+	alertText.Font = Enum.Font.DenkOne
+	alertText.Text = "!"
+	alertText.TextColor3 = Color3.fromRGB(255, 248, 198)
+	alertText.TextScaled = true
+	alertText.Rotation = 4
+	alertText.ZIndex = 52
+	alertText.Parent = badge
+
+	local textStroke = Instance.new("UIStroke")
+	textStroke.Color = Color3.fromRGB(0, 0, 0)
+	textStroke.Thickness = 2
+	textStroke.Parent = alertText
+
+	return {
+		Root = badge,
+		Scale = scale,
+	}
+end
+
+local function setCartoonyAlertBadgeVisible(badgeData, shouldShow)
+	local badge = badgeData.Root
+	if badge.Visible == shouldShow then
+		return
+	end
+
+	if shouldShow then
+		badge.Visible = true
+		badge.Rotation = -10
+		badgeData.Scale.Scale = 0.45
+		TweenService:Create(
+			badgeData.Scale,
+			TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{Scale = 1}
+		):Play()
+		TweenService:Create(
+			badge,
+			TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{Rotation = -4}
+		):Play()
+	else
+		badge.Visible = false
+		badge.Rotation = -4
+		badgeData.Scale.Scale = 1
+	end
+end
+
 -- Wheel Icon
 local wheelIcon = Instance.new("ImageButton")
 wheelIcon.Name = "WheelIcon"
@@ -199,13 +289,49 @@ wheelIcon.Image = wheelAsset
 wheelIcon.ZIndex = 2
 wheelIcon.Parent = wheelScreen
 
+local wheelReadyBadge = createCartoonyAlertBadge(wheelScreen)
+
+local function canSpinWheelNow()
+	local lastSpinTime = player:GetAttribute("LastSpinTime") or 0
+	return not isSpinning and not spinRequestPending and (os.time() - lastSpinTime) >= SPIN_COOLDOWN
+end
+
+local function updateWheelBadgeLayout(iconSize)
+	local badgeSize = math.max(20, math.round(iconSize * 0.28))
+	local badgeXOffset = math.round((iconSize / 2) + (badgeSize * 0.21))
+	local badgeYOffset = -math.round((iconSize / 2) + (badgeSize * 0.21))
+
+	wheelReadyBadge.Root.Size = UDim2.fromOffset(badgeSize, badgeSize)
+	wheelReadyBadge.Root.Position = UDim2.new(
+		wheelIcon.Position.X.Scale,
+		wheelIcon.Position.X.Offset + badgeXOffset,
+		wheelIcon.Position.Y.Scale,
+		wheelIcon.Position.Y.Offset + badgeYOffset
+	)
+end
+
+local function updateWheelReadyBadge()
+	setCartoonyAlertBadgeVisible(wheelReadyBadge, canSpinWheelNow())
+end
+
+local function setWheelIconDisplaySize(iconSize, tweenDuration)
+	local goalSize = UDim2.fromOffset(iconSize, iconSize)
+	updateWheelBadgeLayout(iconSize)
+
+	if tweenDuration and tweenDuration > 0 then
+		wheelIcon:TweenSize(goalSize, "Out", "Quad", tweenDuration, true)
+	else
+		wheelIcon.Size = goalSize
+	end
+end
+
 -- Scales the icon relative to the smaller viewport dimension (width OR height)
 -- so it grows/shrinks correctly on any screen size or orientation
 local function updateWheelIconSize()
 	local vp = workspace.CurrentCamera.ViewportSize
 	local minDim = math.min(vp.X, vp.Y)
 	local iconSize = math.round(minDim * 0.09) -- 9% of the smaller axis; tweak to taste
-	wheelIcon.Size = UDim2.fromOffset(iconSize, iconSize)
+	setWheelIconDisplaySize(iconSize)
 end
 
 -- Run once immediately, then re-run whenever the window is resized
@@ -218,14 +344,14 @@ wheelIcon.MouseEnter:Connect(function()
 	local vp = workspace.CurrentCamera.ViewportSize
 	local minDim = math.min(vp.X, vp.Y)
 	local hoverSize = math.round(minDim * 0.10) -- slightly larger than the base 0.09
-	wheelIcon:TweenSize(UDim2.fromOffset(hoverSize, hoverSize), "Out", "Quad", 0.1, true)
+	setWheelIconDisplaySize(hoverSize, 0.1)
 end)
 
 wheelIcon.MouseLeave:Connect(function()
 	local vp = workspace.CurrentCamera.ViewportSize
 	local minDim = math.min(vp.X, vp.Y)
 	local normalSize = math.round(minDim * 0.09)
-	wheelIcon:TweenSize(UDim2.fromOffset(normalSize, normalSize), "Out", "Quad", 0.1, true)
+	setWheelIconDisplaySize(normalSize, 0.1)
 end)
 
 -- DETACHED CONNECTOR BAR (Parented to ScreenGui)
@@ -420,29 +546,37 @@ closeStroke.Color = Color3.fromRGB(255, 255, 255)
 closeStroke.Thickness = 3
 closeStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
+local function updateSpinButtonDisplay()
+	local lastSpinTime = player:GetAttribute("LastSpinTime") or 0
+	local now = os.time()
+	local timePassed = now - lastSpinTime
+
+	if spinRequestPending or isSpinning then
+		spinBtn.Text = "..."
+		spinBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+		spinBtn.AutoButtonColor = false
+		return
+	end
+
+	if timePassed < SPIN_COOLDOWN then
+		local remaining = SPIN_COOLDOWN - timePassed
+		local minutes = math.floor(remaining / 60)
+		local seconds = remaining % 60
+		spinBtn.Text = string.format("%02d:%02d", minutes, seconds)
+		spinBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+		spinBtn.AutoButtonColor = false
+	else
+		spinBtn.Text = "SPIN!"
+		spinBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+		spinBtn.AutoButtonColor = true
+	end
+end
+
 -- TIMER & BUTTON UPDATE LOOP
 task.spawn(function()
 	while true do
-		-- NEW: Read from the server-synced attribute
-		local lastSpinTime = player:GetAttribute("LastSpinTime") or 0
-		local now = os.time()
-		local timePassed = now - lastSpinTime
-
-		-- Only update timer text if we aren't currently in the middle of a spin animation
-		if not isSpinning then
-			if timePassed < SPIN_COOLDOWN then
-				local remaining = SPIN_COOLDOWN - timePassed
-				local minutes = math.floor(remaining / 60)
-				local seconds = remaining % 60
-				spinBtn.Text = string.format("%02d:%02d", minutes, seconds)
-				spinBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-				spinBtn.AutoButtonColor = false
-			else
-				spinBtn.Text = "SPIN!"
-				spinBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
-				spinBtn.AutoButtonColor = true
-			end
-		end
+		updateSpinButtonDisplay()
+		updateWheelReadyBadge()
 		task.wait(1)
 	end
 end)
@@ -474,38 +608,62 @@ end)
 
 -- UPDATED SPIN LOGIC
 spinBtn.MouseButton1Click:Connect(function()
-	if isSpinning then return end
+	if isSpinning or spinRequestPending then return end
 
-	local lastSpinTime = player:GetAttribute("LastSpinTime") or 0
-	local now = os.time()
-	if (now - lastSpinTime) < SPIN_COOLDOWN then return end
+	if not canSpinWheelNow() then return end
 
-	isSpinning = true
+	spinRequestPending = true
+	spinRequestToken += 1
+	local requestToken = spinRequestToken
+	updateWheelReadyBadge()
+	updateSpinButtonDisplay()
 
 	-- Request spin from server
 	events.SpinWheel:FireServer()
 
-	spinBtn.Text = "..."
-	spinBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+	task.delay(SPIN_REQUEST_TIMEOUT, function()
+		if spinRequestPending and spinRequestToken == requestToken then
+			spinRequestPending = false
+			updateWheelReadyBadge()
+			updateSpinButtonDisplay()
+		end
+	end)
 end)
 
 -- Receive result from server and animate
 events.SpinWheel.OnClientEvent:Connect(function(rewardInfo)
-	-- 1. CHANGE: Wait for the sound to load so we can read its exact "TimeLength"
-	if not spinSound.IsLoaded then spinSound.Loaded:Wait() end
+	spinRequestToken += 1
+	spinRequestPending = false
 
-	-- 2. CHANGE: Set duration to match the sound exactly (solves "sound plays too long")
 	local tweenDuration = 3.5
+	local rewardDeg = rewardInfo and rewardInfo.Deg
 
-	-- Ensure playback speed is normal
-	spinSound.PlaybackSpeed = spinSound.TimeLength / tweenDuration
-	spinSound:Play()
+	if type(rewardDeg) ~= "number" then
+		isSpinning = false
+		updateWheelReadyBadge()
+		updateSpinButtonDisplay()
+		return
+	end
+
+	isSpinning = true
+	updateWheelReadyBadge()
+	updateSpinButtonDisplay()
+
+	-- Let the animation start immediately even if the sound is still loading.
+	if spinSound.IsLoaded and spinSound.TimeLength > 0 then
+		spinSound.PlaybackSpeed = spinSound.TimeLength / tweenDuration
+	else
+		spinSound.PlaybackSpeed = 1
+	end
+	pcall(function()
+		spinSound:Play()
+	end)
 
 	-- 3. ANIMATION LOGIC
 	local fullSpins = 5
 	-- Normalize the current rotation so we aren't compounding previous offsets
 	local currentBase = bigWheel.Rotation - (bigWheel.Rotation % 360)
-	local totalRotation = currentBase + (360 * fullSpins) - rewardInfo.Deg
+	local totalRotation = currentBase + (360 * fullSpins) - rewardDeg
 
 	-- 4. CHANGE: Use the sound's duration (tweenDuration) for the animation speed
 	local tInfo = TweenInfo.new(tweenDuration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
@@ -519,12 +677,13 @@ events.SpinWheel.OnClientEvent:Connect(function(rewardInfo)
 	-- 6. CHANGE: Small buffer before unlocking the button
 	task.wait(0.5)
 	isSpinning = false
+	updateWheelReadyBadge()
+	updateSpinButtonDisplay()
 end)
 
 -- ==========================================
 -- 5. TIMED REWARDS SYSTEM (ICON & GUI RESTORED)
 -- ==========================================
-local sessionStartTime = os.time()
 local timedRewardsData = {
 	{Mins = 10,  Desc = "10M Cash", Image = "rbxassetid://18209585783"},
 	{Mins = 20,  Desc = "Legendary Brainrot", Image = "rbxassetid://403653614"},
@@ -568,6 +727,7 @@ trFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15) -- [cite: 9]
 trFrame.BackgroundTransparency = 0.1
 trFrame.Visible = false
 trFrame.Parent = wheelScreen
+trFrame:SetAttribute("HasClaimableReward", false)
 local sizeConstraint = Instance.new("UISizeConstraint")
 -- MaxWidth is 800 pixels, MaxHeight is 600 pixels (Adjust these as you like)
 sizeConstraint.MaxSize = Vector2.new(800, 600) 
@@ -651,6 +811,7 @@ gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 gridLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
 local buttons = {}
+local updateTimedRewardsState
 
 for i, data in ipairs(timedRewardsData) do
 	local card = Instance.new("Frame")
@@ -713,25 +874,55 @@ for i, data in ipairs(timedRewardsData) do
 		buttons[i].Claimed = true
 		btn.Text = "CLAIMED"
 		btn.BackgroundColor3 = Color3.fromRGB(170, 0, 0) -- [cite: 7]
+		if updateTimedRewardsState then
+			updateTimedRewardsState()
+		end
 	end)
 end
 
 -- ── Timer Loop ──────────────────────────────────────────────────────────────
-task.spawn(function()
-	while true do
-		local elapsed = (os.time() - sessionStartTime) / 60
-		for _, info in ipairs(buttons) do
-			if not info.Claimed then
-				if elapsed >= info.Mins then
-					info.Btn.Text = "CLAIM"
-					info.Btn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
-				else
-					local left = math.ceil((info.Mins - elapsed) * 60)
-					info.Btn.Text = string.format("%02d:%02d", math.floor(left/60), left%60)
-					info.Btn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-				end
+updateTimedRewardsState = function()
+	local joinTime = player:GetAttribute("JoinTime")
+	local elapsedSeconds = 0
+	local hasClaimableReward = false
+
+	if type(joinTime) == "number" then
+		elapsedSeconds = math.max(0, os.time() - joinTime)
+	end
+
+	for _, info in ipairs(buttons) do
+		if not info.Claimed then
+			local rewardSeconds = info.Mins * 60
+			if elapsedSeconds >= rewardSeconds then
+				hasClaimableReward = true
+				info.Btn.Text = "CLAIM"
+				info.Btn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+			else
+				local left = math.max(0, rewardSeconds - elapsedSeconds)
+				info.Btn.Text = string.format("%02d:%02d", math.floor(left / 60), left % 60)
+				info.Btn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 			end
 		end
+	end
+
+	if trFrame:GetAttribute("HasClaimableReward") ~= hasClaimableReward then
+		trFrame:SetAttribute("HasClaimableReward", hasClaimableReward)
+	end
+end
+
+player:GetAttributeChangedSignal("LastSpinTime"):Connect(function()
+	updateWheelReadyBadge()
+	updateSpinButtonDisplay()
+end)
+player:GetAttributeChangedSignal("JoinTime"):Connect(updateTimedRewardsState)
+
+updateWheelReadyBadge()
+updateSpinButtonDisplay()
+updateTimedRewardsState()
+
+task.spawn(function()
+	while true do
+		updateTimedRewardsState()
 		task.wait(1)
 	end
 end)

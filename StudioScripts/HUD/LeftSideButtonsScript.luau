@@ -1,6 +1,11 @@
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+local leaderstats = player:WaitForChild("leaderstats")
+local rebirthsStat = leaderstats:WaitForChild("Rebirths")
+local Config = require(ReplicatedStorage:WaitForChild("Config"))
 
 local function createSquareButton(name, text, imageId, position, bgColor, iconScale)
 	iconScale = iconScale or 0.65
@@ -84,6 +89,93 @@ local function createSquareButton(name, text, imageId, position, bgColor, iconSc
 	return btn
 end
 
+local function createCartoonyAlertBadge(parent)
+	local badge = Instance.new("Frame")
+	badge.Name = "ReadyAlertBadge"
+	badge.AnchorPoint = Vector2.new(1, 0)
+	badge.BackgroundTransparency = 1
+	badge.Visible = false
+	badge.Rotation = -4
+	badge.ZIndex = 10
+	badge.Parent = parent
+
+	local scale = Instance.new("UIScale")
+	scale.Scale = 1
+	scale.Parent = badge
+
+	local shadow = Instance.new("Frame")
+	shadow.Name = "Shadow"
+	shadow.Size = UDim2.fromScale(0.96, 0.96)
+	shadow.Position = UDim2.fromScale(0.06, 0.06)
+	shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	shadow.BackgroundTransparency = 0.2
+	shadow.BorderSizePixel = 0
+	shadow.ZIndex = 10
+	shadow.Parent = badge
+	Instance.new("UICorner", shadow).CornerRadius = UDim.new(1, 0)
+
+	local bubble = Instance.new("Frame")
+	bubble.Name = "Bubble"
+	bubble.Size = UDim2.fromScale(0.92, 0.92)
+	bubble.BackgroundColor3 = Color3.fromRGB(235, 56, 52)
+	bubble.BorderSizePixel = 0
+	bubble.Rotation = 3
+	bubble.ZIndex = 11
+	bubble.Parent = badge
+	Instance.new("UICorner", bubble).CornerRadius = UDim.new(1, 0)
+
+	local alertText = Instance.new("TextLabel")
+	alertText.Name = "AlertText"
+	alertText.Size = UDim2.fromScale(0.68, 0.68)
+	alertText.Position = UDim2.fromScale(0.5, 0.48)
+	alertText.AnchorPoint = Vector2.new(0.5, 0.5)
+	alertText.BackgroundTransparency = 1
+	alertText.Font = Enum.Font.DenkOne
+	alertText.Text = "!"
+	alertText.TextColor3 = Color3.fromRGB(255, 248, 198)
+	alertText.TextScaled = true
+	alertText.Rotation = 4
+	alertText.ZIndex = 12
+	alertText.Parent = badge
+
+	local textStroke = Instance.new("UIStroke")
+	textStroke.Color = Color3.fromRGB(0, 0, 0)
+	textStroke.Thickness = 2
+	textStroke.Parent = alertText
+
+	return {
+		Root = badge,
+		Scale = scale,
+	}
+end
+
+local function setCartoonyAlertBadgeVisible(badgeData, shouldShow)
+	local badge = badgeData.Root
+	if badge.Visible == shouldShow then
+		return
+	end
+
+	if shouldShow then
+		badge.Visible = true
+		badge.Rotation = -10
+		badgeData.Scale.Scale = 0.45
+		TweenService:Create(
+			badgeData.Scale,
+			TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{Scale = 1}
+		):Play()
+		TweenService:Create(
+			badge,
+			TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{Rotation = -4}
+		):Play()
+	else
+		badge.Visible = false
+		badge.Rotation = -4
+		badgeData.Scale.Scale = 1
+	end
+end
+
 local shopBtn = createSquareButton(
 	"Shop",
 	"SHOP",
@@ -101,6 +193,28 @@ local rebirthBtn = createSquareButton(
 	Color3.fromRGB(30, 30, 30),
 	0.65
 )
+
+local rebirthReadyBadge = createCartoonyAlertBadge(rebirthBtn)
+rebirthReadyBadge.Root.Size = UDim2.fromScale(0.29, 0.29)
+rebirthReadyBadge.Root.Position = UDim2.fromScale(1.03, -0.03)
+
+local function getNextRebirthRequirement()
+	return Config.RebirthRequirements[rebirthsStat.Value + 1]
+end
+
+local function canPlayerRebirthNow()
+	local nextReq = getNextRebirthRequirement()
+	if not nextReq then
+		return false
+	end
+
+	local currentPower = player:GetAttribute("CannonPower") or 1
+	return currentPower >= nextReq.power
+end
+
+local function updateRebirthReadyBadge()
+	setCartoonyAlertBadgeVisible(rebirthReadyBadge, canPlayerRebirthNow())
+end
 
 local rebirthGuiOpen = false
 
@@ -134,27 +248,13 @@ local function openRebirthGui()
 	if rebirthGuiOpen then return end
 	rebirthGuiOpen = true
 
-	local remotes = game.ReplicatedStorage:WaitForChild("RemoteEvents")
+	local remotes = ReplicatedStorage:WaitForChild("RemoteEvents")
 	local rebirthRemote = remotes:WaitForChild("Rebirth")
 
-	local currentRebirths = player.leaderstats.Rebirths.Value
+	local currentRebirths = rebirthsStat.Value
 	local currentPower = player:GetAttribute("CannonPower") or 1
-	local currentMult = player:GetAttribute("RebirthMultiplier") or 1.0
-
-	local requirements = {
-		{ rebirth = 1,  power = 20,  multiplier = 1.5 },
-		{ rebirth = 2,  power = 40,  multiplier = 2.0 },
-		{ rebirth = 3,  power = 60,  multiplier = 2.5 },
-		{ rebirth = 4,  power = 80,  multiplier = 3.0 },
-		{ rebirth = 5,  power = 90,  multiplier = 3.5 },
-		{ rebirth = 6,  power = 100, multiplier = 4.0 },
-		{ rebirth = 7,  power = 110, multiplier = 4.5 },
-		{ rebirth = 8,  power = 120, multiplier = 5.0 },
-		{ rebirth = 9,  power = 130, multiplier = 5.5 },
-		{ rebirth = 10,  power = 140, multiplier = 6.0 },
-	}
-
-	local nextReq = requirements[currentRebirths + 1]
+	local currentMult = player:GetAttribute("RebirthMultiplier") or Config.RebirthBaseMultiplier
+	local nextReq = Config.RebirthRequirements[currentRebirths + 1]
 	local isMaxed = nextReq == nil
 	local canRebirth = not isMaxed and currentPower >= nextReq.power
 
@@ -419,6 +519,9 @@ local function openRebirthGui()
 end
 
 rebirthBtn.MouseButton1Click:Connect(openRebirthGui)
+player:GetAttributeChangedSignal("CannonPower"):Connect(updateRebirthReadyBadge)
+rebirthsStat:GetPropertyChangedSignal("Value"):Connect(updateRebirthReadyBadge)
+updateRebirthReadyBadge()
 
 -- ==========================================
 -- ADDED: Rewards button moved from TopSideButtonsScript
@@ -435,6 +538,10 @@ local rewardsBtn = createSquareButton(
 	0.65
 )
 
+local rewardsReadyBadge = createCartoonyAlertBadge(rewardsBtn)
+rewardsReadyBadge.Root.Size = UDim2.fromScale(0.29, 0.29)
+rewardsReadyBadge.Root.Position = UDim2.fromScale(1.03, -0.03)
+
 -- ADDED:
 -- Opens the already-existing rewards frame created
 -- inside TopSideButtonsScript.
@@ -442,18 +549,26 @@ rewardsBtn.MouseButton1Click:Connect(function()
 	local rewardsGui = playerGui:FindFirstChild("WheelSpinGui")
 
 	if rewardsGui then
-		local rewardsFrame = rewardsGui:FindFirstChild("Frame")
-
-		-- Safer lookup so we only toggle the rewards frame
-		for _, child in ipairs(rewardsGui:GetChildren()) do
-			if child:IsA("Frame") and child ~= rewardsFrame then
-				if child:FindFirstChildWhichIsA("UIGridLayout", true) then
-					child.Visible = true
-					break
-				end
-			end
+		local timedRewardsFrame = rewardsGui:FindFirstChild("TimedRewardsFrame")
+		if timedRewardsFrame and timedRewardsFrame:IsA("Frame") then
+			timedRewardsFrame.Visible = true
 		end
 	end
+end)
+
+task.spawn(function()
+	local rewardsGui = playerGui:WaitForChild("WheelSpinGui")
+	local timedRewardsFrame = rewardsGui:WaitForChild("TimedRewardsFrame")
+
+	local function syncRewardsReadyBadge()
+		setCartoonyAlertBadgeVisible(
+			rewardsReadyBadge,
+			timedRewardsFrame:GetAttribute("HasClaimableReward") == true
+		)
+	end
+
+	syncRewardsReadyBadge()
+	timedRewardsFrame:GetAttributeChangedSignal("HasClaimableReward"):Connect(syncRewardsReadyBadge)
 end)
 
 local indexBtn = createSquareButton(

@@ -1,5 +1,8 @@
 local AnalyticsService = game:GetService("AnalyticsService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+
+local TutorialSteps = require(ReplicatedStorage.TutorialSteps)
 
 local FunnelAnalytics = {}
 
@@ -27,6 +30,8 @@ local TUTORIAL_STEP_TO_FUNNEL_STEP = {
 }
 
 local loggedStepsByPlayer = {}
+local ORDERED_TUTORIAL_STEPS = TutorialSteps.ORDER
+local TUTORIAL_STEP_DEFINITIONS = TutorialSteps.STEPS
 
 local function shouldLogAnalytics()
 	return not RunService:IsStudio()
@@ -67,17 +72,51 @@ local function tryLogStep(player, stepNumber)
 	end)
 end
 
+local function syncTutorialProgressInternal(player, tutorialStepFlags, suppressedAnalyticsFlags, shouldLog)
+	if not player or not shouldLogAnalytics() then
+		return
+	end
+
+	local playerState = getPlayerState(player)
+	if not playerState[ONBOARDING_START_STEP] then
+		return
+	end
+
+	for _, tutorialStepId in ipairs(ORDERED_TUTORIAL_STEPS) do
+		local stepDefinition = TUTORIAL_STEP_DEFINITIONS[tutorialStepId]
+		local stepNumber = TUTORIAL_STEP_TO_FUNNEL_STEP[tutorialStepId]
+		local completionFlag = stepDefinition and (stepDefinition.completionFlag or stepDefinition.id) or tutorialStepId
+
+		if suppressedAnalyticsFlags and suppressedAnalyticsFlags[completionFlag] then
+			break
+		end
+
+		if not tutorialStepFlags or not tutorialStepFlags[completionFlag] then
+			break
+		end
+
+		if stepNumber then
+			if shouldLog then
+				tryLogStep(player, stepNumber)
+			else
+				playerState[stepNumber] = true
+			end
+		end
+	end
+end
+
 function FunnelAnalytics.logOnboardingStart(player)
 	tryLogStep(player, ONBOARDING_START_STEP)
 end
 
-function FunnelAnalytics.logTutorialStep(player, tutorialStepId)
-	local stepNumber = TUTORIAL_STEP_TO_FUNNEL_STEP[tutorialStepId]
-	if not stepNumber then
-		return
-	end
+function FunnelAnalytics.primeTutorialProgress(player, tutorialStepFlags, suppressedAnalyticsFlags)
+	-- Seed in-memory dedupe from already-completed contiguous steps so reconnects
+	-- do not re-emit older analytics, while still allowing a later gap to unlock.
+	syncTutorialProgressInternal(player, tutorialStepFlags, suppressedAnalyticsFlags, false)
+end
 
-	tryLogStep(player, stepNumber)
+function FunnelAnalytics.syncTutorialProgress(player, tutorialStepFlags, suppressedAnalyticsFlags)
+	syncTutorialProgressInternal(player, tutorialStepFlags, suppressedAnalyticsFlags, true)
 end
 
 function FunnelAnalytics.clearPlayer(player)
