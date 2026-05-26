@@ -8,6 +8,7 @@ local Config = require(ReplicatedStorage.Config)
 local Remotes = require(ReplicatedStorage.Remotes)
 local TutorialSteps = require(ReplicatedStorage.TutorialSteps)
 local Base = require(ServerScriptService.Base)
+local FunnelAnalytics = require(ServerScriptService.FunnelAnalytics)
 local PlayerData = require(ServerScriptService.PlayerData)
 
 local Tutorial = {}
@@ -97,7 +98,8 @@ end
 
 local function syncUpgradeStepFromSnapshot(player)
 	if snapshotHasUpgradedBrainrot(structureSnapshots[player] or {}) then
-		markStepComplete(player, "upgradeBrainrot")
+		-- Loading existing state should not backfill onboarding funnel progress.
+		markStepComplete(player, "upgradeBrainrot", true)
 	end
 end
 
@@ -206,7 +208,7 @@ local function syncPlayer(player)
 	})
 end
 
-markStepComplete = function(player, stepId)
+markStepComplete = function(player, stepId, suppressAnalytics)
 	local state = ensurePlayerState(player)
 	local step = getStepDefinition(stepId)
 	if not state or not step or state.tutorialComplete then
@@ -221,6 +223,10 @@ markStepComplete = function(player, stepId)
 	state.flags[flagId] = true
 	if not getCurrentStepId(state.flags) then
 		state.tutorialComplete = true
+	end
+
+	if not suppressAnalytics then
+		FunnelAnalytics.logTutorialStep(player, stepId)
 	end
 
 	PlayerData.setTutorialState(player, state.tutorialComplete, state.flags)
@@ -259,6 +265,10 @@ local function loadPlayer(player)
 	local state = ensurePlayerState(player)
 	if not state then
 		return
+	end
+
+	if not state.tutorialComplete then
+		FunnelAnalytics.logOnboardingStart(player)
 	end
 
 	refreshAndSyncPlayer(player)
@@ -422,6 +432,7 @@ function Tutorial.init()
 		runtimeState[player] = nil
 		structureSnapshots[player] = nil
 		cleanupCashTracking(player)
+		FunnelAnalytics.clearPlayer(player)
 	end)
 
 	for _, player in Players:GetPlayers() do
