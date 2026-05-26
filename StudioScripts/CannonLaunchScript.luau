@@ -1,5 +1,4 @@
 local PhysicsService = game:GetService("PhysicsService")
-local RunService = game:GetService("RunService")
 local smoothBlock = script.Parent
 local seat = smoothBlock:FindFirstChild("CannonSeat")
 local prompt = smoothBlock:FindFirstChild("ProximityPrompt")
@@ -9,7 +8,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local Remotes = require(ReplicatedStorage.Remotes)
 local Pickup = require(ServerScriptService:WaitForChild("Pickup"))
 
-local DEBUG_CANNON = true
+local DEBUG_CANNON = false
 local DEBUG_SAMPLE_INTERVAL = 0.25
 local nextFlightDebugId = 0
 
@@ -21,7 +20,7 @@ local CONFIG = {
 	MIN_TIME = 1.2,
 	MAX_TIME = 3.4,
 	MIN_VERTICAL = 70,
-	MAX_POWER = 130,
+	MAX_POWER = 150,
 	PRE_LAUNCH_DELAY = 0.8,
 	ARRIVAL_RADIUS = 10,
 	FLIGHT_TIMEOUT = 10,
@@ -40,6 +39,7 @@ local ZONE_FOLDERS = {
 	"SpawnZonesMythic",
 	"SpawnZonesSecret",
 	"SpawnZonesDivine",
+	"SpawnZonesAncient"
 }
 
 local PLAYER_FLIGHT_GROUP = "CannonFlightPlayers"
@@ -267,109 +267,6 @@ local function getLaunchClearance(rootPart)
 	return math.max(1, rootPart.Size.Y * 0.5) + 0.1
 end
 
-local function getForwardLaunchPose(rootPart, targetPosition)
-	local launchClearance = getLaunchClearance(rootPart)
-	local launchPose = CFrame.lookAt(seat.Position, Vector3.new(targetPosition.X, seat.Position.Y, targetPosition.Z))
-		* CFrame.Angles(math.rad(-45), 0, 0)
-		* CFrame.new(0, launchClearance, 0)
-
-	return launchPose, launchClearance
-end
-
-local function capturePrepAnimationLock(character, humanoid)
-	local animateScript = character and character:FindFirstChild("Animate")
-	local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
-	local tracks = {}
-
-	if animator then
-		local ok, playingTracks = pcall(function()
-			return animator:GetPlayingAnimationTracks()
-		end)
-
-		if ok and type(playingTracks) == "table" then
-			tracks = playingTracks
-		end
-	end
-
-	return {
-		animateScript = animateScript,
-		originalAnimateDisabled = animateScript and animateScript.Disabled or nil,
-		tracks = tracks,
-		restored = false,
-	}
-end
-
-local function shouldStopPrepTrack(track)
-	if not track then
-		return false
-	end
-
-	local ok, priority = pcall(function()
-		return track.Priority
-	end)
-
-	if not ok then
-		return false
-	end
-
-	return priority == Enum.AnimationPriority.Core
-		or priority == Enum.AnimationPriority.Idle
-		or priority == Enum.AnimationPriority.Movement
-end
-
-local function applyPrepAnimationLock(lockState, debugId)
-	if not lockState then
-		return
-	end
-
-	local animateScript = lockState.animateScript
-	if animateScript and animateScript.Parent then
-		animateScript.Disabled = true
-	end
-
-	local stoppedTrackCount = 0
-
-	for _, track in ipairs(lockState.tracks) do
-		if shouldStopPrepTrack(track) then
-			local stopOk = pcall(function()
-				track:Stop(0.05)
-			end)
-
-			if stopOk then
-				stoppedTrackCount += 1
-			end
-		end
-	end
-
-	debugLog(
-		debugId,
-		"prep animation lock applied",
-		"hasAnimate=" .. tostring(animateScript ~= nil),
-		"tracksExamined=" .. tostring(#lockState.tracks),
-		"tracksStopped=" .. tostring(stoppedTrackCount)
-	)
-end
-
-local function restorePrepAnimationLock(lockState, debugId, reason)
-	if not lockState or lockState.restored then
-		return
-	end
-
-	lockState.restored = true
-
-	local animateScript = lockState.animateScript
-	if animateScript and animateScript.Parent and lockState.originalAnimateDisabled ~= nil then
-		animateScript.Disabled = lockState.originalAnimateDisabled
-	end
-
-	debugLog(
-		debugId,
-		"prep animation lock restored",
-		"reason=" .. tostring(reason or "unspecified"),
-		"restoredAnimate=" .. tostring(animateScript ~= nil)
-	)
-end
-
 local function getLandingClearance(humanoid, rootPart)
 	return math.max(rootPart.Size.Y * 0.5 + humanoid.HipHeight, 2) + 0.35
 end
@@ -457,7 +354,6 @@ prompt.Triggered:Connect(function(player)
 	local flightMeta = {
 		releaseReason = nil,
 	}
-	local prepAnimationLock = nil
 
 	debugLog(
 		debugId,
@@ -496,13 +392,11 @@ prompt.Triggered:Connect(function(player)
 		hum.AutoRotate = false
 		hum.PlatformStand = false
 		hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-		prepAnimationLock = capturePrepAnimationLock(char, hum)
-		applyPrepAnimationLock(prepAnimationLock, debugId)
 
-		local launchPose, launchClearance = getForwardLaunchPose(hrp, targetPos)
-		local prepStart = tick()
-		hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-		hrp.CFrame = launchPose
+		local launchClearance = getLaunchClearance(hrp)
+		hrp.CFrame = CFrame.lookAt(seat.Position, Vector3.new(targetPos.X, seat.Position.Y, targetPos.Z))
+			* CFrame.Angles(math.rad(-45), 0, 0)
+			* CFrame.new(0, launchClearance, 0)
 		debugLog(
 			debugId,
 			"pre-launch pose aligned",
@@ -511,28 +405,12 @@ prompt.Triggered:Connect(function(player)
 			"launchClearance=" .. string.format("%.2f", launchClearance)
 		)
 
-		RunService.Heartbeat:Wait()
-
-		if not (hrp.Parent and hum.Parent) then
-			debugWarn(debugId, "character lost during pre-launch heartbeat restamp")
-			error("character lost during pre-launch heartbeat restamp")
-		end
-
-		hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-		hrp.CFrame = launchPose
-
-		local remainingPrepDelay = CONFIG.PRE_LAUNCH_DELAY - (tick() - prepStart)
-		if remainingPrepDelay > 0 then
-			task.wait(remainingPrepDelay)
-		end
+		task.wait(CONFIG.PRE_LAUNCH_DELAY)
 
 		if not (hrp.Parent and hum.Parent) then
 			debugWarn(debugId, "character lost during pre-launch wait")
 			error("character lost during pre-launch wait")
 		end
-
-		hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-		hrp.CFrame = launchPose
 
 		local g = workspace.Gravity
 		local delta = targetPos - hrp.Position
@@ -566,7 +444,6 @@ prompt.Triggered:Connect(function(player)
 		)
 		Remotes.CannonDropEvent:FireClient(player, "Launch", launchVelocity)
 		debugLog(debugId, "launch fired to client")
-		restorePrepAnimationLock(prepAnimationLock, debugId, "launch_handoff")
 
 		local launchTime = tick()
 
@@ -756,7 +633,6 @@ prompt.Triggered:Connect(function(player)
 		if hum and hum.Parent then
 			hum.AutoRotate = true
 		end
-		restorePrepAnimationLock(prepAnimationLock, debugId, "setup_error")
 		if not launchStarted then
 			pcall(function()
 				Remotes.CannonDropEvent:FireClient(player, "Reset")

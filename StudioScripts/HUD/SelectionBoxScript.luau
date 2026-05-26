@@ -11,7 +11,8 @@ local FOLDER_NAMES = {
 	"SpawnZonesLegendary", 
 	"SpawnZonesMythic", 
 	"SpawnZonesSecret", 
-	"SpawnZonesDivine"
+	"SpawnZonesDivine",
+	"SpawnZonesAncient"
 }
 
 local allBoxes = {}

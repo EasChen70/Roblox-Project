@@ -14,6 +14,10 @@ local SlashAnim = Instance.new("Animation")
 SlashAnim.AnimationId = BaseUrl .. "522635514"
 SlashAnim.Parent = Tool
 
+-- [[ GUARD COPIED SETTINGS ]] --
+local KNOCKBACK_POWER = 25
+local VERTICAL_LAUNCH = 25
+
 local hitList = {} 
 local isSwinging = false
 local canSwing = true 
@@ -62,7 +66,6 @@ Handle.Touched:Connect(function(otherPart)
 	local hitChar = otherPart.Parent
 
 	-- [[ NEW: Guard Protection Check ]] --
-	-- This checks if the hit object is named "Guard" or has an attribute called "IsGuard"
 	if hitChar.Name == "Guard" or hitChar:GetAttribute("IsGuard") then 
 		return 
 	end
@@ -77,66 +80,52 @@ Handle.Touched:Connect(function(otherPart)
 	if hitHumanoid and rootPart and hitChar ~= myChar and not hitList[hitChar] and not hitChar:FindFirstChild("StunnedTag") then
 		hitList[hitChar] = true 
 
+		-- Prevent instant re-stuns
 		local stunTag = Instance.new("BoolValue")
 		stunTag.Name = "StunnedTag"
 		stunTag.Parent = hitChar
 
-		local knockbackDirection = (rootPart.Position - Handle.Position).Unit
-		local attachment = Instance.new("Attachment", rootPart)
-
-		local lv = Instance.new("LinearVelocity", rootPart)
-		lv.Attachment0 = attachment
-		lv.MaxForce = 2000000 
-
-		lv.VectorVelocity = (knockbackDirection * 25) + Vector3.new(0, 35, 0) 
-
-		local spin = Instance.new("AngularVelocity", rootPart)
-		spin.Attachment0 = attachment
-		spin.MaxTorque = 2000000
-		spin.AngularVelocity = Vector3.new(math.random(-10, 10), 0, math.random(-10, 10))
-
-		task.wait(0.12) 
-		lv:Destroy()
-		spin:Destroy()
-		attachment:Destroy()
-
-		local savedUseJumpPower = hitHumanoid.UseJumpPower
-		local savedJumpPower = hitHumanoid.JumpPower
-		local savedJumpHeight = hitHumanoid.JumpHeight
-
-		hitHumanoid.PlatformStand = true 
-		if savedUseJumpPower then
-			hitHumanoid.JumpPower = 0
-		else
-			hitHumanoid.JumpHeight = 0
-		end
-		hitHumanoid.WalkSpeed = 0
-
+		-- Drop item if holding one
 		local player = Players:GetPlayerFromCharacter(hitChar)
 		if player then
-			pcall(function() rootPart:SetNetworkOwner(player) end)
+			Pickup.drop(player)
 		end
 
-		task.delay(3, function()
+		-- [[ GUARD KNOCKBACK & STATE LOGIC ]] --
+		hitHumanoid.PlatformStand = true 
+		hitHumanoid.AutoRotate = false
+		hitHumanoid:ChangeState(Enum.HumanoidStateType.FallingDown)
+
+		-- Apply push vectors directly to assembly
+		rootPart.CFrame = rootPart.CFrame * CFrame.new(0, 2, 0) 
+		local pushDir = (rootPart.Position - Handle.Position).Unit
+		rootPart.AssemblyLinearVelocity = (pushDir * KNOCKBACK_POWER) + Vector3.new(0, VERTICAL_LAUNCH, 0)
+		rootPart.AssemblyAngularVelocity = Vector3.zero
+
+		-- [[ GUARD RECOVERY LOGIC (Merged with Gamepasses Speed) ]] --
+		task.delay(3.0, function()
 			if hitChar and hitChar.Parent then
 				local tag = hitChar:FindFirstChild("StunnedTag")
 				if tag then tag:Destroy() end
 
 				if hitHumanoid then
-					hitHumanoid.PlatformStand = false
-					if savedUseJumpPower then
-						hitHumanoid.JumpPower = savedJumpPower
-					else
-						hitHumanoid.JumpHeight = savedJumpHeight
-					end
+					hitHumanoid.AutoRotate = true
+					hitHumanoid.PlatformStand = false 
+
 					local stunnedPlayer = Players:GetPlayerFromCharacter(hitChar)
-					Gamepasses.applyDefaultSpeed(stunnedPlayer, hitHumanoid)
+					if stunnedPlayer then
+						Gamepasses.applyDefaultSpeed(stunnedPlayer, hitHumanoid)
+					else
+						hitHumanoid.WalkSpeed = 16 -- Fallback if hit target is an NPC
+					end
+
 					hitHumanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-					rootPart.CFrame = rootPart.CFrame * CFrame.new(0, 2, 0)
+					rootPart.AssemblyLinearVelocity = Vector3.new(0, 5, 0)
 				end
 			end
 		end)
 
+		-- Visual feedback (Red flash)
 		for _, part in pairs(hitChar:GetChildren()) do
 			if part:IsA("BasePart") then
 				local oldColor = part.Color

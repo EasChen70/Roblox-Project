@@ -481,7 +481,8 @@ local rarityColors = {
 	Mythic = Color3.fromRGB(255, 50, 50),
 	Secret = Color3.fromRGB(255, 255, 255),
 	Divine = Color3.fromRGB(209, 35, 232),
-	Exclusive = Color3.fromRGB(75, 0, 130)
+	Exclusive = Color3.fromRGB(75, 0, 130),
+	Ancient = Color3.fromRGB(85, 0, 0),
 }
 
 local function closeIndexGui()
@@ -519,17 +520,17 @@ local function openIndexGui()
 	panel.BackgroundTransparency = 0.1
 	panel.Parent = screen
 	Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 15)
-	attachPanelTexture(panel, 0.9) -- Using your existing texture function
+	attachPanelTexture(panel, 0.9) 
 
 	local panelStroke = Instance.new("UIStroke")
 	panelStroke.Color = Color3.fromRGB(255, 255, 255)
 	panelStroke.Thickness = 3
 	panelStroke.Parent = panel
 
-	-- 4. Title (Vertically slimmed down)
+	-- 4. Title 
 	local title = Instance.new("TextLabel")
-	title.Size = UDim2.fromScale(1, 0.08) -- Reduced from 0.08 to 0.05 for a very slim look
-	title.Position = UDim2.fromScale(0.5, 0.03) -- Tucked closer to the top edge
+	title.Size = UDim2.fromScale(1, 0.08) 
+	title.Position = UDim2.fromScale(0.5, 0.03) 
 	title.AnchorPoint = Vector2.new(0.5, 0)
 	title.BackgroundTransparency = 1
 	title.Text = "✧ BRAINROT INDEX ✧"
@@ -538,20 +539,20 @@ local function openIndexGui()
 	title.TextScaled = true
 	title.Parent = panel
 
-	-- 5. Scrolling Frame (Adjusted to sit right under the slim header)
+	-- 5. Scrolling Frame 
 	local scroll = Instance.new("ScrollingFrame")
-	scroll.Size = UDim2.fromScale(0.92, 0.82) -- Increased vertical space for cards
-	scroll.Position = UDim2.fromScale(0.5, 0.12) -- Moved up from 0.18 to 0.12
-	scroll.AnchorPoint = Vector2.new(0.5, 0)
+	-- CHANGED: Reduced width from 0.92 to 0.72 and moved to the left to fit the right panel
+	scroll.Size = UDim2.fromScale(0.72, 0.82) 
+	scroll.Position = UDim2.fromScale(0.04, 0.12) -- CHANGED: Pushed to the left edge slightly
+	scroll.AnchorPoint = Vector2.new(0, 0) -- CHANGED: Removed center anchor to align properly
 	scroll.BackgroundTransparency = 1
 	scroll.BorderSizePixel = 0
 	scroll.ScrollBarThickness = 6
 	scroll.ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255)
 	scroll.Parent = panel
 
-	-- Add a UIPadding to the scroll frame to ensure the top row has breathing room
 	local padding = Instance.new("UIPadding")
-	padding.PaddingTop = UDim.new(0, 10) -- Adds 10 pixels of space inside the top of the scroll
+	padding.PaddingTop = UDim.new(0, 10) 
 	padding.Parent = scroll
 
 	local layout = Instance.new("UIGridLayout")
@@ -573,16 +574,14 @@ local function openIndexGui()
 		cardStroke.Thickness = 2
 		cardStroke.Parent = card
 
-		-- Brainrot Image (Uses imageId if it exists in your table, else placeholder)
 		local img = Instance.new("ImageLabel")
 		img.Size = UDim2.fromScale(0.7, 0.55)
 		img.Position = UDim2.fromScale(0.5, 0.1)
 		img.AnchorPoint = Vector2.new(0.5, 0)
 		img.BackgroundTransparency = 1
-		img.Image = data.imageId and ("rbxassetid://" .. tostring(data.imageId):match("%d+")) or "rbxassetid://10614205" -- Default icon
+		img.Image = data.imageId and ("rbxassetid://" .. tostring(data.imageId):match("%d+")) or "rbxassetid://10614205" 
 		img.Parent = card
 
-		-- Name Label
 		local nameLbl = Instance.new("TextLabel")
 		nameLbl.Size = UDim2.fromScale(0.9, 0.18)
 		nameLbl.Position = UDim2.fromScale(0.5, 0.7)
@@ -594,7 +593,6 @@ local function openIndexGui()
 		nameLbl.TextScaled = true
 		nameLbl.Parent = card
 
-		-- Rarity Label
 		local rarityLbl = Instance.new("TextLabel")
 		rarityLbl.Size = UDim2.fromScale(0.9, 0.12)
 		rarityLbl.Position = UDim2.fromScale(0.5, 0.88)
@@ -607,33 +605,109 @@ local function openIndexGui()
 		rarityLbl.Parent = card
 	end
 
-	-- 7. Close Button (Styled to match Rewards/Rebirth GUI)
+	-- ==========================================
+	-- ADDED: Right-Side Rarity Banners
+	-- ==========================================
+	local rightScroll = Instance.new("ScrollingFrame")
+	rightScroll.Size = UDim2.fromScale(0.2, 0.82) -- Fits in the remaining 20% width space
+	rightScroll.Position = UDim2.fromScale(0.78, 0.12) 
+	rightScroll.BackgroundTransparency = 1
+	rightScroll.BorderSizePixel = 0
+	rightScroll.ScrollBarThickness = 4
+	rightScroll.ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255)
+	rightScroll.Parent = panel
+
+	local rightPadding = Instance.new("UIPadding")
+	rightPadding.PaddingTop = UDim.new(0, 10)
+	rightPadding.Parent = rightScroll
+
+	local rightLayout = Instance.new("UIListLayout")
+	rightLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	rightLayout.Padding = UDim.new(0, 10) -- Space between the buttons
+	rightLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	rightLayout.Parent = rightScroll
+
+	-- Ordered rarities array so buttons are displayed consistently
+	local orderedRarities = {
+		"Normal", "Gold", "Diamond", "Radioactive"
+	}
+
+	-- CHANGED: Added dictionary to define the specific colors requested for each banner
+	local customBannerColors = {
+		["Normal"] = Color3.fromRGB(140, 140, 140),       -- Grey
+		["Gold"] = Color3.fromRGB(255, 200, 0),          -- Gold
+		["Diamond"] = Color3.fromRGB(0, 160, 255),       -- Blue
+		["Radioactive"] = Color3.fromRGB(0, 85, 0)    -- Green
+	}
+
+	for i, rarity in ipairs(orderedRarities) do
+		local rBtn = Instance.new("TextButton")
+		rBtn.Size = UDim2.new(0.9, 0, 0, 45) -- Fixed height, scales horizontally
+
+		-- CHANGED: Used the new customBannerColors configuration for BackgroundColor3
+		rBtn.BackgroundColor3 = customBannerColors[rarity] or rarityColors[rarity] or Color3.fromRGB(100, 100, 100)
+
+		rBtn.Text = rarity:upper()
+		rBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		rBtn.Font = Enum.Font.DenkOne
+		rBtn.TextScaled = true
+		rBtn.LayoutOrder = i
+		rBtn.Parent = rightScroll
+
+		local textPadding = Instance.new("UIPadding")
+		textPadding.PaddingTop = UDim.new(0, 8)
+		textPadding.PaddingBottom = UDim.new(0, 8)
+		textPadding.Parent = rBtn
+
+		Instance.new("UICorner", rBtn).CornerRadius = UDim.new(0, 6)
+
+		-- Button Outline
+		local btnStroke = Instance.new("UIStroke")
+		btnStroke.Color = Color3.fromRGB(0, 0, 0)
+		btnStroke.Thickness = 3
+		btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		btnStroke.Parent = rBtn
+
+		-- Text Outline
+		local textStroke = Instance.new("UIStroke")
+		textStroke.Color = Color3.fromRGB(0, 0, 0)
+		textStroke.Thickness = 2
+		textStroke.Parent = rBtn
+	end
+
+	-- Adjust right scroll canvas automatically
+	rightLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		rightScroll.CanvasSize = UDim2.new(0, 0, 0, rightLayout.AbsoluteContentSize.Y + 20)
+	end)
+	-- ==========================================
+
+	-- 7. Close Button 
 	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.fromScale(0.07, 0.08) -- Matches Rebirth close button scale 
-	closeBtn.Position = UDim2.fromScale(0.97, 0.03) -- Matches Rebirth close button position 
+	closeBtn.Size = UDim2.fromScale(0.07, 0.08)  
+	closeBtn.Position = UDim2.fromScale(0.97, 0.03)  
 	closeBtn.AnchorPoint = Vector2.new(1, 0) 
-	closeBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20) -- Dark background 
+	closeBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20) 
 	closeBtn.Text = "X" 
-	closeBtn.TextColor3 = Color3.fromRGB(255, 90, 90) -- Reddish text 
+	closeBtn.TextColor3 = Color3.fromRGB(255, 90, 90) 
 	closeBtn.Font = Enum.Font.DenkOne 
 	closeBtn.TextScaled = true 
 	closeBtn.Parent = panel 
 
 	Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8) 
-
-	-- Apply the panel texture to the close button 
 	attachPanelTexture(closeBtn, 0.76) 
 
 	local xStroke = Instance.new("UIStroke")
-	xStroke.Color = Color3.fromRGB(255, 255, 255) -- White border 
+	xStroke.Color = Color3.fromRGB(255, 255, 255) 
 	xStroke.Thickness = 3 
 	xStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border 
 	xStroke.Parent = closeBtn 
 
 	closeBtn.MouseButton1Click:Connect(closeIndexGui)
 
-	-- Update canvas size so it scrolls properly
-	scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 20)
+	-- CHANGED: Automatically update main canvas size whenever the layout wraps or changes (Fixes mobile scrolling)
+	layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 20)
+	end)
 end
 
 indexBtn.MouseButton1Click:Connect(openIndexGui)
