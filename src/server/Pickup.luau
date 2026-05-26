@@ -337,7 +337,8 @@ local function getInventorySellValue(tool)
 	end
 
 	local baseIncome = resolveBaseIncome(tool.Name, tool:GetAttribute("BaseIncome"), tool:GetAttribute("IncomePerSec"))
-	return math.floor(baseIncome * 10)
+	local mutation = tool:GetAttribute("Mutation") or "None"
+	return Brainrots.getSellValue(baseIncome, mutation)
 end
 
 local function cleanupEquippedToolState(player, tool)
@@ -934,6 +935,21 @@ end)
 
 local stashDebounce = {}
 
+local function getPlayerFromBoundaryHit(hit)
+	local current = hit
+	while current and current ~= workspace do
+		if current:IsA("Model") then
+			local player = Players:GetPlayerFromCharacter(current)
+			if player then
+				return player
+			end
+		end
+		current = current.Parent
+	end
+
+	return nil
+end
+
 local spawnZoneFolders = {
 	game.Workspace:WaitForChild("SpawnZones"),
 	game.Workspace:WaitForChild("SpawnZonesRare"),
@@ -953,12 +969,7 @@ for _, folder in spawnZoneFolders do
 	end
 
 	boundary.TouchEnded:Connect(function(hit)
-		local character = hit.Parent
-		if not character then
-			return
-		end
-
-		local player = Players:GetPlayerFromCharacter(character)
+		local player = getPlayerFromBoundaryHit(hit)
 		if not player then
 			return
 		end

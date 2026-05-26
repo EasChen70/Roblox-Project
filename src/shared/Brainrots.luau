@@ -78,6 +78,12 @@ function Brainrots.getUpgradeCost(baseIncome, rarity, currentLevel)
 	return math.floor(baseIncome * scaling.costMult * (Brainrots.CostGrowth ^ (currentLevel - 1)))
 end
 
+function Brainrots.getSellValue(baseIncome, mutation)
+	local Config = require(game.ReplicatedStorage.Config)
+	local mult = Config.MutationMultipliers[mutation] or 1.0
+	return math.floor((baseIncome or 0) * 10 * mult)
+end
+
 function Brainrots.getIncomeWithMutation(baseIncome, rarity, level, mutation)
 	local base = Brainrots.getIncomeAtLevel(baseIncome, rarity, level)
 	local Config = require(game.ReplicatedStorage.Config)

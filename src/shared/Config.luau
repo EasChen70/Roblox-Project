@@ -94,7 +94,7 @@ local Config = {
 	-- [[NEW: Radioactive Event configuration values]] --
 	-- This keeps your timing and chances organized in one place
 	MutationRadioactiveChance = 0.15, -- 15% chance during the event
-	RadioactiveEventCooldown = 30 * 60, -- 30 minutes in seconds
+	RadioactiveEventCooldown = 20 * 60, -- 20 minutes in seconds
 	RadioactiveEventDuration = 5 * 60, -- 5 minutes in seconds
 	-- [[END NEW]] --
 	
@@ -104,7 +104,7 @@ local Config = {
 		Diamond = 2.0,
 		-- [[NEW: Added Radioactive income multiplier]] --
 		-- Brainrots.getIncomeWithMutation will automatically use this!
-		Radioactive = 2.5, 
+		Radioactive = 3.5, 
 		-- [[END NEW]] --
 	},
 

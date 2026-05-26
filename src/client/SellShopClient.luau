@@ -55,7 +55,7 @@ local function getClosestDist(verticalPadding)
 end
 
 local function formatMutation(mutation)
-	if mutation == "Gold" or mutation == "Diamond" then
+	if mutation and mutation ~= "None" then
 		return mutation
 	end
 	return "Normal"
@@ -120,7 +120,8 @@ local function getEligibleTools()
 end
 
 local function getSellValue(tool)
-	return math.floor(getToolBaseIncome(tool) * 10)
+	local mutation = tool:GetAttribute("Mutation") or "None"
+	return Brainrots.getSellValue(getToolBaseIncome(tool), mutation)
 end
 
 local function disconnectCharacterConnections()

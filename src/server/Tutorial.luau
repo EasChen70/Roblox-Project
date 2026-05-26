@@ -21,6 +21,7 @@ local structureSnapshots = {}
 local cashState = {}
 local cashConnections = {}
 local connectedLaunchPrompts = {}
+local connectedReturnPrompts = {}
 local started = false
 local markStepComplete
 
@@ -375,6 +376,17 @@ local function connectLaunchPrompt(prompt)
 	end)
 end
 
+local function connectReturnPrompt(prompt)
+	if not prompt or connectedReturnPrompts[prompt] then
+		return
+	end
+
+	connectedReturnPrompts[prompt] = true
+	prompt.Triggered:Connect(function(player)
+		markStepComplete(player, "returnToBase")
+	end)
+end
+
 local function tagCannonTargets()
 	for _, obj in ipairs(Workspace:GetDescendants()) do
 		if obj:IsA("Model") and obj.Name == "CannonShop" then
@@ -385,6 +397,7 @@ local function tagCannonTargets()
 			local prompt = obj:FindFirstChild("ProximityPrompt", true)
 			if prompt then
 				addTag(prompt, TAGS.ReturnCannon)
+				connectReturnPrompt(prompt)
 			end
 		elseif obj:IsA("Model") and string.find(obj.Name, "CannonModel") and obj.Name ~= "ReturnCannonModel" then
 			local seat = obj:FindFirstChild("CannonSeat", true)
@@ -453,7 +466,12 @@ function Tutorial.handleGrab(player, model)
 end
 
 function Tutorial.handleStash(player)
-	markStepComplete(player, "returnToBase")
+	if not player then
+		return
+	end
+
+	-- Stashing is still part of the gameplay loop, but it no longer completes the
+	-- return-cannon tutorial step. That step is now tied to the actual cannon prompt.
 end
 
 function Tutorial.handlePlacementDataChanged(player)

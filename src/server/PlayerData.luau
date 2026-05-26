@@ -106,6 +106,13 @@ local function cloneInventoryData(items)
 	return cloned
 end
 
+local function shouldAutoCompleteTutorialForVeteran(data)
+	return (data.rebirths or 0) > 0
+		or (data.cannonPower or 1) > 1
+		or countPresentEntries(data.slots) > 0
+		or countPresentEntries(data.inventory) > 0
+end
+
 -- Migration v1 -> v2: default level = 1 on all existing slots + inventory items
 migrations[2] = function(data)
 	if data.slots then
@@ -132,7 +139,7 @@ migrations[4] = function(data)
 	data.tutorialComplete = data.tutorialComplete == true
 	data.tutorialStepFlags = cloneCompletedFlags(data.tutorialStepFlags)
 
-	if (data.rebirths or 0) > 0 or (data.cannonPower or 1) > 1 or countPresentEntries(data.slots) > 0 then
+	if shouldAutoCompleteTutorialForVeteran(data) then
 		data.tutorialComplete = true
 	end
 
@@ -706,6 +713,9 @@ function PlayerData.load(player)
 
 	loadedData.tutorialComplete = loadedData.tutorialComplete == true
 	loadedData.tutorialStepFlags = cloneCompletedFlags(loadedData.tutorialStepFlags)
+	if shouldAutoCompleteTutorialForVeteran(loadedData) then
+		loadedData.tutorialComplete = true
+	end
 
 	local existingFinalizing = finalizingSessions[player]
 	if existingFinalizing then

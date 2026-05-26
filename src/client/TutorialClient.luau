@@ -26,7 +26,9 @@ local TUTORIAL_COMPLETE_MESSAGE = TutorialSteps.COMPLETE_MESSAGE
 local TUTORIAL_COMPLETE_DISPLAY_TIME = TutorialSteps.COMPLETE_DISPLAY_TIME
 local RETARGET_INTERVAL = 0.2
 local PATH_CHEVRON_SPACING = 2.75
-local PATH_MAX_CHEVRONS = 22
+local PATH_RENDER_WINDOW = 72
+local PATH_TAIL_FADE_DISTANCE = 12
+local PATH_MAX_CHEVRONS = math.ceil(PATH_RENDER_WINDOW / PATH_CHEVRON_SPACING) + 1
 local PATH_END_OFFSET = 2
 local CANNON_PATH_END_OFFSET = 3
 local CANNON_RENDER_FOOTPRINT_PADDING = 1
@@ -37,7 +39,6 @@ local PATH_TOUCH_BUFFER = 0.35
 local PATH_GROUNDED_STABILITY_TIME = 0.15
 local PATH_RAY_HEIGHT = 40
 local PATH_RAY_DISTANCE = 120
-local GRAB_TARGET_HEIGHT_WINDOW = 6
 local CHEVRON_HEIGHT = 0.9
 local CHEVRON_SIZE = Vector3.new(3.5, 0.12, 3.5)
 local CHEVRON_IMAGE = "rbxassetid://6669861035"
@@ -45,11 +46,11 @@ local CHEVRON_IMAGE_ROTATION = 90
 local CHEVRON_CANVAS_SIZE = Vector2.new(256, 256)
 local CHEVRON_IMAGE_SCALE = 0.92
 local CHEVRON_SHADOW_OFFSET = 10
+local CHEVRON_ARROW_BASE_TRANSPARENCY = 0.08
+local CHEVRON_SHADOW_BASE_TRANSPARENCY = 0.45
 local CHEVRON_SCROLL_SPEED = 5
-local PATH_NODE_MERGE_DISTANCE = 4
-local PATH_NODE_LINK_DISTANCE = 18
-local PATH_NODE_MAX_HEIGHT_DELTA = 16
-local PATH_TARGET_POINT_HEIGHT_WEIGHT = 8
+local PATH_MAX_RISE_ABOVE_SAMPLE = 4
+local PATH_MIN_GROUND_NORMAL_Y = 0.6
 local ZONE_FLOOR_HEIGHT_TOLERANCE = 6
 local ZONE_FLOOR_FOOTPRINT_PADDING = 1
 local BASE_BANNER_WIDTH = 430
@@ -57,6 +58,8 @@ local BASE_BANNER_HEIGHT = 30
 local BANNER_TOP_MARGIN = 4
 local BANNER_VIEWPORT_WIDTH_RATIO = 0.88
 local TUTORIAL_BANNER_SCALE_MULTIPLIER = 1.2
+local FLIGHT_PRELAUNCH_TIMEOUT = 2.5
+local FLIGHT_SUPPRESSION_TIMEOUT = 10
 
 local BaseContext = {
 	baseId = nil,
@@ -86,9 +89,11 @@ local currentCameraConnection = nil
 local activePathTarget = nil
 local activePathLogicalStepId = nil
 local activePathChevrons = {}
+local activeChevronCapacity = 0
 local pathAnimationPhase = 0
 local isFlightSuppressed = false
 local flightRecoveryToken = 0
+local sampleRouteAtDistance
 local started = false
 local refreshDisplay
 
@@ -408,28 +413,6 @@ local function resolvePathTargetPosition(startPos, target, logicalStepId)
 	return Vector3.new(renderPosXZ.X, actualTargetPos.Y, renderPosXZ.Z)
 end
 
-local function resolveGrabVisibilityPosition(instance)
-	if not instance or not instance:IsA("Model") then
-		return resolveGrabPathPosition(instance)
-	end
-
-	local pathPosition = resolveGrabPathPosition(instance)
-	local ok, cframe, size = pcall(function()
-		local boxCFrame, boxSize = instance:GetBoundingBox()
-		return boxCFrame, boxSize
-	end)
-	if ok and cframe and size then
-		local center = cframe.Position
-		local lift = math.max(size.Y * 0.18, 1.4)
-		local x = pathPosition and pathPosition.X or center.X
-		local z = pathPosition and pathPosition.Z or center.Z
-		local y = math.max(center.Y + lift, (pathPosition and pathPosition.Y or center.Y) + 1.2)
-		return Vector3.new(x, y, z)
-	end
-
-	return pathPosition
-end
-
 local function getCommonSpawnZone()
 	local folder = Workspace:FindFirstChild("SpawnZones")
 	if not folder then
@@ -451,26 +434,6 @@ local function getCommonSpawnZoneGuard()
 	end
 
 	return nil
-end
-
-local function getCommonSpawnPoints()
-	local zone = getCommonSpawnZone()
-	if not zone then
-		return nil, nil
-	end
-
-	local points = {}
-	for _, child in ipairs(zone:GetChildren()) do
-		if child:IsA("BasePart") and child.Name:sub(1, 2) == "SP" then
-			table.insert(points, child)
-		end
-	end
-
-	if #points == 0 then
-		return zone, nil
-	end
-
-	return zone, points
 end
 
 local function getSpawnZoneFloorPart(zone)
@@ -496,40 +459,49 @@ local function getSpawnZoneFloorPart(zone)
 	return nil
 end
 
-local function getClosestSpawnPoint(points, worldPosition, heightWeight)
-	if not points or not worldPosition then
-		return nil
-	end
-
-	local bestPoint = nil
-	local bestScore = math.huge
-	heightWeight = heightWeight or 0
-	for _, point in ipairs(points) do
-		local dx = point.Position.X - worldPosition.X
-		local dz = point.Position.Z - worldPosition.Z
-		local horizontalDistance = math.sqrt((dx * dx) + (dz * dz))
-		local heightDistance = math.abs(point.Position.Y - worldPosition.Y)
-		local score = horizontalDistance + (heightDistance * heightWeight)
-		if score < bestScore then
-			bestScore = score
-			bestPoint = point
-		end
-	end
-
-	return bestPoint
-end
-
 local function isWorldGrabTarget(instance)
 	if not instance or not instance:IsA("Model") then
 		return false
 	end
 
-	local parentModel = instance.Parent
-	if parentModel and parentModel:IsA("Model") and parentModel:FindFirstChildOfClass("Humanoid") then
+	if not instance:IsDescendantOf(Workspace) then
 		return false
 	end
 
-	return instance:GetAttribute("Rarity") == "Common"
+	if instance:GetAttribute("Rarity") ~= "Common" then
+		return false
+	end
+
+	if instance:GetAttribute("DespawnRemaining") == nil then
+		return false
+	end
+
+	if instance:GetAttribute("DespawnPaused") ~= false then
+		return false
+	end
+
+	if instance:GetAttribute("IsWorldItem") == true then
+		return false
+	end
+
+	if not instance.PrimaryPart then
+		return false
+	end
+
+	local prompt = instance:FindFirstChildWhichIsA("ProximityPrompt", true)
+	if not prompt then
+		return false
+	end
+
+	local current = instance
+	while current and current ~= Workspace do
+		if current:IsA("Model") and current:FindFirstChildOfClass("Humanoid") then
+			return false
+		end
+		current = current.Parent
+	end
+
+	return true
 end
 
 local function isValidCandidate(instance, logicalStepId)
@@ -576,166 +548,27 @@ local function getHorizontalDistance(a, b)
 	return math.sqrt((dx * dx) + (dz * dz))
 end
 
-local function buildSpawnPointNeighbors(points)
-	local neighbors = {}
-	for _, point in ipairs(points) do
-		neighbors[point] = {}
-	end
-
-	for i = 1, #points do
-		local pointA = points[i]
-		for j = i + 1, #points do
-			local pointB = points[j]
-			local horizontalDistance = getHorizontalDistance(pointA.Position, pointB.Position)
-			local heightDelta = math.abs(pointA.Position.Y - pointB.Position.Y)
-			if horizontalDistance <= PATH_NODE_LINK_DISTANCE
-				and heightDelta <= PATH_NODE_MAX_HEIGHT_DELTA then
-				local cost = (pointA.Position - pointB.Position).Magnitude
-				table.insert(neighbors[pointA], { point = pointB, cost = cost })
-				table.insert(neighbors[pointB], { point = pointA, cost = cost })
-			end
-		end
-	end
-
-	return neighbors
-end
-
-local function findSpawnPointPath(points, neighbors, startPoint, targetPoint)
-	if not startPoint or not targetPoint then
-		return nil
-	end
-
-	if startPoint == targetPoint then
-		return { startPoint }
-	end
-
-	local distances = {}
-	local previous = {}
-	local unvisited = {}
-
-	for _, point in ipairs(points) do
-		distances[point] = math.huge
-		table.insert(unvisited, point)
-	end
-	distances[startPoint] = 0
-
-	while #unvisited > 0 do
-		local currentIndex = 1
-		local currentPoint = unvisited[1]
-		for index = 2, #unvisited do
-			local candidate = unvisited[index]
-			if distances[candidate] < distances[currentPoint] then
-				currentIndex = index
-				currentPoint = candidate
-			end
-		end
-
-		table.remove(unvisited, currentIndex)
-		if currentPoint == targetPoint then
-			break
-		end
-
-		local currentDistance = distances[currentPoint]
-		if currentDistance == math.huge then
-			break
-		end
-
-		for _, edge in ipairs(neighbors[currentPoint] or {}) do
-			local tentativeDistance = currentDistance + edge.cost
-			if tentativeDistance < (distances[edge.point] or math.huge) then
-				distances[edge.point] = tentativeDistance
-				previous[edge.point] = currentPoint
-			end
-		end
-	end
-
-	if not previous[targetPoint] then
-		return { startPoint, targetPoint }
-	end
-
-	local path = { targetPoint }
-	local cursor = targetPoint
-	while previous[cursor] do
-		cursor = previous[cursor]
-		table.insert(path, 1, cursor)
-	end
-
-	return path
-end
-
-local function isGrabTargetUnobstructed(hrpPosition, candidate, visibilityPosition)
-	local raycastParams = RaycastParams.new()
-	local filterList = {}
-
-	if player.Character then
-		table.insert(filterList, player.Character)
-	end
-	if pathFolder then
-		table.insert(filterList, pathFolder)
-	end
-
-	for _, tagged in ipairs(CollectionService:GetTagged(STEP_VIEW.grabBrainrot.targetTag)) do
-		if tagged ~= candidate and tagged.Parent then
-			table.insert(filterList, tagged)
-		end
-	end
-
-	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-	raycastParams.FilterDescendantsInstances = filterList
-
-	local origin = hrpPosition + Vector3.new(0, 1.5, 0)
-	local targetPoint = visibilityPosition
-	local direction = targetPoint - origin
-	local result = Workspace:Raycast(origin, direction, raycastParams)
-	if not result then
-		return true
-	end
-
-	return result.Instance:IsDescendantOf(candidate)
-end
-
 local function chooseBestGrabTarget(tag, hrp)
 	local bestTarget = nil
-	local bestTier = math.huge
 	local bestDistance = math.huge
-	local bestHeight = math.huge
+	local bestVerticalDelta = math.huge
 
 	for _, candidate in ipairs(CollectionService:GetTagged(tag)) do
 		if isValidCandidate(candidate, "grabBrainrot") then
 			local pathPosition = resolveGrabPathPosition(candidate)
-			local visibilityPosition = resolveGrabVisibilityPosition(candidate)
-			if pathPosition and visibilityPosition then
+			if pathPosition then
 				local horizontalDistance = getHorizontalDistance(hrp.Position, pathPosition)
-				local verticalDelta = math.abs(visibilityPosition.Y - hrp.Position.Y)
-				local nearPlayerHeight = verticalDelta <= GRAB_TARGET_HEIGHT_WINDOW
-				local unobstructed = isGrabTargetUnobstructed(hrp.Position, candidate, visibilityPosition)
-
-				local tier = 4
-				if unobstructed and nearPlayerHeight then
-					tier = 1
-				elseif unobstructed then
-					tier = 2
-				elseif nearPlayerHeight then
-					tier = 3
-				end
-
-				local isBetter = false
-				if tier < bestTier
+				local verticalDelta = math.abs(pathPosition.Y - hrp.Position.Y)
+				if
+					horizontalDistance < bestDistance - 0.05
 					or (
-						tier == bestTier
-						and (
-							pathPosition.Y < bestHeight - 1
-							or (math.abs(pathPosition.Y - bestHeight) <= 1 and horizontalDistance < bestDistance - 0.05)
-						)
-					) then
-					isBetter = true
-				end
-
-				if isBetter then
+						math.abs(horizontalDistance - bestDistance) <= 0.05
+						and verticalDelta < bestVerticalDelta - 0.05
+					)
+				then
 					bestTarget = candidate
-					bestTier = tier
 					bestDistance = horizontalDistance
-					bestHeight = pathPosition.Y
+					bestVerticalDelta = verticalDelta
 				end
 			end
 		end
@@ -794,6 +627,7 @@ function PathRenderer.destroy()
 	activePathTarget = nil
 	activePathLogicalStepId = nil
 	activePathChevrons = {}
+	activeChevronCapacity = 0
 	pathAnimationPhase = 0
 end
 
@@ -850,9 +684,7 @@ local function isHumanoidGroundedStable(humanoid)
 		return false
 	end
 
-	return humanoid.PlatformStand == false
-		and humanoid.SeatPart == nil
-		and humanoid.FloorMaterial ~= Enum.Material.Air
+	return humanoid.PlatformStand == false and humanoid.SeatPart == nil and humanoid.FloorMaterial ~= Enum.Material.Air
 end
 
 -- Returns whether a raycast hit should be ignored so projection stays on walkable
@@ -875,11 +707,21 @@ local function checkIgnoredGroundHit(instance, surfaceRoot)
 	end
 
 	local lowerName = string.lower(instance.Name)
-	if string.find(lowerName, "conveyor", 1, true) then return true, "name_conveyor" end
-	if string.find(lowerName, "belt", 1, true) then return true, "name_belt" end
-	if string.find(lowerName, "guard", 1, true) then return true, "name_guard" end
-	if string.find(lowerName, "path", 1, true) then return true, "name_path" end
-	if string.find(lowerName, "tutorial", 1, true) then return true, "name_tutorial" end
+	if string.find(lowerName, "conveyor", 1, true) then
+		return true, "name_conveyor"
+	end
+	if string.find(lowerName, "belt", 1, true) then
+		return true, "name_belt"
+	end
+	if string.find(lowerName, "guard", 1, true) then
+		return true, "name_guard"
+	end
+	if string.find(lowerName, "path", 1, true) then
+		return true, "name_path"
+	end
+	if string.find(lowerName, "tutorial", 1, true) then
+		return true, "name_tutorial"
+	end
 
 	local ancestorModel = instance:FindFirstAncestorOfClass("Model")
 	if ancestorModel and ancestorModel:GetAttribute("Rarity") then
@@ -939,7 +781,6 @@ local function projectPointToGround(worldPosition, preferredFloorPart, surfaceRo
 	local excluded = table.clone(raycastParams.FilterDescendantsInstances or {})
 	local direction = Vector3.new(0, -PATH_RAY_DISTANCE, 0)
 
-
 	for _ = 1, 8 do
 		raycastParams.FilterDescendantsInstances = excluded
 		local result = Workspace:Raycast(origin, direction, raycastParams)
@@ -947,13 +788,15 @@ local function projectPointToGround(worldPosition, preferredFloorPart, surfaceRo
 			break
 		end
 
-		local ignored = checkIgnoredGroundHit(result.Instance, surfaceRoot)
+		local ignored, ignoreReason = checkIgnoredGroundHit(result.Instance, surfaceRoot)
+		local deltaY = result.Position.Y - worldPosition.Y
+		local normalY = result.Normal.Y
 
-		if not ignored then
+		if ignored or deltaY > PATH_MAX_RISE_ABOVE_SAMPLE or normalY < PATH_MIN_GROUND_NORMAL_Y then
+			table.insert(excluded, result.Instance)
+		else
 			return Vector3.new(worldPosition.X, result.Position.Y + CHEVRON_HEIGHT, worldPosition.Z)
 		end
-
-		table.insert(excluded, result.Instance)
 	end
 
 	return Vector3.new(worldPosition.X, worldPosition.Y + CHEVRON_HEIGHT, worldPosition.Z)
@@ -983,11 +826,16 @@ local function createPathChevron(parent)
 	local shadow = Instance.new("ImageLabel")
 	shadow.Name = "Shadow"
 	shadow.Size = UDim2.fromScale(CHEVRON_IMAGE_SCALE, CHEVRON_IMAGE_SCALE)
-	shadow.Position = UDim2.new((1 - CHEVRON_IMAGE_SCALE) * 0.5, CHEVRON_SHADOW_OFFSET, (1 - CHEVRON_IMAGE_SCALE) * 0.5, CHEVRON_SHADOW_OFFSET)
+	shadow.Position = UDim2.new(
+		(1 - CHEVRON_IMAGE_SCALE) * 0.5,
+		CHEVRON_SHADOW_OFFSET,
+		(1 - CHEVRON_IMAGE_SCALE) * 0.5,
+		CHEVRON_SHADOW_OFFSET
+	)
 	shadow.BackgroundTransparency = 1
 	shadow.Image = CHEVRON_IMAGE
 	shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-	shadow.ImageTransparency = 0.45
+	shadow.ImageTransparency = CHEVRON_SHADOW_BASE_TRANSPARENCY
 	shadow.Rotation = CHEVRON_IMAGE_ROTATION
 	shadow.Parent = surface
 
@@ -998,13 +846,15 @@ local function createPathChevron(parent)
 	arrow.BackgroundTransparency = 1
 	arrow.Image = CHEVRON_IMAGE
 	arrow.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	arrow.ImageTransparency = 0.08
+	arrow.ImageTransparency = CHEVRON_ARROW_BASE_TRANSPARENCY
 	arrow.Rotation = CHEVRON_IMAGE_ROTATION
 	arrow.Parent = surface
 
 	return {
 		part = chevronPart,
 		surface = surface,
+		shadow = shadow,
+		arrow = arrow,
 	}
 end
 
@@ -1016,15 +866,52 @@ end
 
 local function syncChevronPool(count)
 	local folder = ensurePathFolder()
+	activeChevronCapacity = math.max(activeChevronCapacity, count)
 
-	while #activePathChevrons < count do
+	while #activePathChevrons < activeChevronCapacity do
 		table.insert(activePathChevrons, createPathChevron(folder))
 	end
+end
 
-	while #activePathChevrons > count do
-		local chevron = table.remove(activePathChevrons)
-		if chevron and chevron.part then
-			chevron.part:Destroy()
+local function setChevronFade(chevron, fadeAlpha)
+	if not chevron then
+		return
+	end
+
+	local alpha = math.clamp(fadeAlpha or 0, 0, 1)
+	if chevron.arrow then
+		chevron.arrow.ImageTransparency = CHEVRON_ARROW_BASE_TRANSPARENCY
+			+ ((1 - CHEVRON_ARROW_BASE_TRANSPARENCY) * alpha)
+	end
+	if chevron.shadow then
+		chevron.shadow.ImageTransparency = CHEVRON_SHADOW_BASE_TRANSPARENCY
+			+ ((1 - CHEVRON_SHADOW_BASE_TRANSPARENCY) * alpha)
+	end
+end
+
+local function getChevronFadeAlpha(relativeDistance, renderSpan)
+	if renderSpan <= 0 then
+		return 0
+	end
+
+	local fadeDistance = math.min(PATH_TAIL_FADE_DISTANCE, renderSpan)
+	if fadeDistance <= 0 then
+		return 0
+	end
+
+	local fadeStart = math.max(renderSpan - fadeDistance, 0)
+	if relativeDistance <= fadeStart then
+		return 0
+	end
+
+	return math.clamp((relativeDistance - fadeStart) / fadeDistance, 0, 1)
+end
+
+local function hideChevronsFromIndex(startIndex)
+	for index = startIndex, #activePathChevrons do
+		local chevron = activePathChevrons[index]
+		if chevron then
+			setChevronVisible(chevron, false)
 		end
 	end
 end
@@ -1064,123 +951,22 @@ local function buildDirectRoute(startPos, targetPos, metadata)
 	}
 end
 
-local function buildRouteFromSegments(startPos, targetPos, segments)
-	if #segments == 0 then
-		return buildDirectRoute(startPos, targetPos)
-	end
-
-	local totalLength = 0
-	for _, segment in ipairs(segments) do
-		totalLength += segment.length
-	end
-
-	return {
-		segments = segments,
-		totalLength = totalLength,
-		targetPos = targetPos,
-	}
-end
-
-local function buildCommonSpawnRoute(startPos, targetPathPos, targetIsOnCommonSpawnFloor, finalOutsideMode)
-	local zone, points = getCommonSpawnPoints()
-	if not zone or not points or #points == 0 then
-		return buildDirectRoute(startPos, targetPathPos)
-	end
-	local floorPart = getSpawnZoneFloorPart(zone)
-	local targetOnFloor = targetIsOnCommonSpawnFloor
-	if targetOnFloor == nil then
-		targetOnFloor = isOnCommonSpawnFloor(targetPathPos, floorPart)
-	end
-
-	local entrySP = getClosestSpawnPoint(points, startPos, 0.5)
-	local exitSP = getClosestSpawnPoint(points, targetPathPos, PATH_TARGET_POINT_HEIGHT_WEIGHT)
-	if not entrySP or not exitSP then
-		return buildDirectRoute(startPos, targetPathPos)
-	end
-
-	local neighbors = buildSpawnPointNeighbors(points)
-	local spawnPath = findSpawnPointPath(points, neighbors, entrySP, exitSP)
-	if not spawnPath or #spawnPath == 0 then
-		return buildDirectRoute(startPos, targetPathPos)
-	end
-
-	if #spawnPath == 1 and targetOnFloor then
-		local segments = {}
-		addRouteSegment(segments, startPos, targetPathPos, "zone", {
-			floorPart = floorPart,
-			surfaceRoot = zone,
-		})
-
-		return buildRouteFromSegments(startPos, targetPathPos, segments)
-	end
-
-	local segments = {}
-	local currentPos = startPos
-	local entryPos = entrySP.Position
-
-	-- For the remaining no-intermediate-node cases, emit the player-to-entrySP
-	-- raycast leg so the later final stretch starts from a floor-anchored
-	-- point. The merge-distance gate is only safe when the route will continue
-	-- through additional spawn points.
-	local hasIntermediateNodes = #spawnPath >= 2
-	local farFromEntry = getHorizontalDistance(currentPos, entryPos) > PATH_NODE_MERGE_DISTANCE
-	local shouldUseZoneFromStart = finalOutsideMode == "raycast" and isOnCommonSpawnFloor(startPos, floorPart)
-	if shouldUseZoneFromStart then
-		addRouteSegment(segments, currentPos, entryPos, "zone", {
-			floorPart = floorPart,
-			surfaceRoot = zone,
-		})
-	elseif farFromEntry or not hasIntermediateNodes then
-		addRouteSegment(segments, currentPos, entryPos, "raycast")
-	end
-	currentPos = entryPos
-
-	for index = 2, #spawnPath do
-		local nextPos = spawnPath[index].Position
-		if getHorizontalDistance(currentPos, nextPos) > 0.25 then
-			addRouteSegment(segments, currentPos, nextPos, "zone", {
-				floorPart = floorPart,
-				surfaceRoot = zone,
-			})
-			currentPos = nextPos
-		end
-	end
-
-	if (currentPos - targetPathPos).Magnitude > 1 then
-		local floorTopY = nil
-		if floorPart then
-			floorTopY = getPartTopY(floorPart)
-		end
-
-		if targetOnFloor then
-			addRouteSegment(segments, currentPos, targetPathPos, "zone", {
-				floorPart = floorPart,
-				surfaceRoot = zone,
-			})
-		elseif finalOutsideMode == "elevated" then
-			local elevatedStartPos = currentPos
-			if floorTopY then
-				elevatedStartPos = Vector3.new(currentPos.X, floorTopY, currentPos.Z)
-			end
-
-			addRouteSegment(segments, elevatedStartPos, targetPathPos, "elevated", {
-				surfaceRoot = zone,
-			})
-		else
-			addRouteSegment(segments, currentPos, targetPathPos, finalOutsideMode or "raycast")
-		end
-	end
-
-	return buildRouteFromSegments(startPos, targetPathPos, segments)
-end
-
 local function buildGrabRoute(startPos, target)
 	local targetPathPos = resolveGrabPathPosition(target)
 	if not targetPathPos then
 		return nil
 	end
 
-	return buildCommonSpawnRoute(startPos, targetPathPos, nil, "elevated")
+	local zone = getCommonSpawnZone()
+	local floorPart = zone and getSpawnZoneFloorPart(zone) or nil
+	if zone and floorPart and isOnCommonSpawnFloor(targetPathPos, floorPart) then
+		return buildDirectRoute(startPos, targetPathPos, {
+			floorPart = floorPart,
+			surfaceRoot = zone,
+		})
+	end
+
+	return buildDirectRoute(startPos, targetPathPos)
 end
 
 local function buildPathRoute(startPos, target, logicalStepId)
@@ -1207,7 +993,7 @@ local function buildPathRoute(startPos, target, logicalStepId)
 	return buildDirectRoute(startPos, targetPos)
 end
 
-local function sampleRouteAtDistance(route, distanceAlongRoute)
+sampleRouteAtDistance = function(route, distanceAlongRoute)
 	if not route or not route.segments or #route.segments == 0 then
 		return nil, nil
 	end
@@ -1302,14 +1088,27 @@ local function getPathLayout(target, logicalStepId)
 	}
 end
 
+local function clearFlightSuppression(reason)
+	flightRecoveryToken += 1
+	if not isFlightSuppressed then
+		return
+	end
+
+	isFlightSuppressed = false
+	if refreshDisplay then
+		refreshDisplay()
+	end
+end
+
 -- Flight suppression hides the path during launch and landing so the chevrons do
 -- not fight the cannon motion or project onto temporary airborne positions.
-function PathRenderer.beginFlightSuppression()
+function PathRenderer.beginFlightSuppression(reason)
 	flightRecoveryToken += 1
 	isFlightSuppressed = true
 	PathRenderer.destroy()
 
 	local token = flightRecoveryToken
+	local startedAt = os.clock()
 	task.spawn(function()
 		local groundedSince = nil
 		local seenFlightState = false
@@ -1329,17 +1128,22 @@ function PathRenderer.beginFlightSuppression()
 				elseif seenFlightState and isHumanoidGroundedStable(humanoid) then
 					groundedSince = groundedSince or os.clock()
 					if os.clock() - groundedSince >= PATH_GROUNDED_STABILITY_TIME then
-						isFlightSuppressed = false
-						if refreshDisplay then
-							refreshDisplay()
-						end
+						clearFlightSuppression("grounded")
 						return
 					end
+				elseif not seenFlightState and os.clock() - startedAt >= FLIGHT_PRELAUNCH_TIMEOUT then
+					clearFlightSuppression("prelaunch_timeout")
+					return
 				else
 					groundedSince = nil
 				end
 			else
 				groundedSince = nil
+			end
+
+			if os.clock() - startedAt >= FLIGHT_SUPPRESSION_TIMEOUT then
+				clearFlightSuppression(seenFlightState and "timeout" or "timeout_no_state")
+				return
 			end
 
 			task.wait(0.05)
@@ -1354,7 +1158,9 @@ function PathRenderer.update(target, logicalStepId)
 	end
 
 	if activePathTarget ~= target or activePathLogicalStepId ~= logicalStepId then
-		pathAnimationPhase = 0
+		if activePathTarget or activePathLogicalStepId then
+			PathRenderer.destroy()
+		end
 		activePathTarget = target
 		activePathLogicalStepId = logicalStepId
 	end
@@ -1382,24 +1188,30 @@ function PathRenderer.animate(deltaTime)
 		end
 
 		positionChevron(chevron, worldPosition, flatDirection)
+		setChevronFade(chevron, 0)
+		hideChevronsFromIndex(2)
 		pathAnimationPhase = 0
 		return
 	end
 
-	local chevronCount = math.clamp(math.ceil(layout.visibleSpan / PATH_CHEVRON_SPACING) + 1, 1, PATH_MAX_CHEVRONS)
+	-- Keep the animated phase in world-distance units and render only the near
+	-- window so player movement does not rescale the chevron conveyor.
+	local renderSpan = math.min(layout.visibleSpan, PATH_RENDER_WINDOW)
+	local chevronCount = math.clamp(math.ceil(renderSpan / PATH_CHEVRON_SPACING) + 1, 1, PATH_MAX_CHEVRONS)
 	syncChevronPool(chevronCount)
 
-	local cycleLength = layout.visibleSpan + PATH_CHEVRON_SPACING
-	pathAnimationPhase = (pathAnimationPhase + (CHEVRON_SCROLL_SPEED * deltaTime)) % cycleLength
+	pathAnimationPhase = (pathAnimationPhase + (CHEVRON_SCROLL_SPEED * deltaTime)) % PATH_CHEVRON_SPACING
 
 	for index, chevron in ipairs(activePathChevrons) do
-		local relativeDistance = (((index - 1) * PATH_CHEVRON_SPACING) + pathAnimationPhase) % cycleLength
-		if relativeDistance > layout.visibleSpan then
+		local relativeDistance = pathAnimationPhase + ((index - 1) * PATH_CHEVRON_SPACING)
+		if relativeDistance > renderSpan then
 			setChevronVisible(chevron, false)
 		else
-			local worldPosition, flatDirection = sampleRouteAtDistance(layout.route, layout.startDistance + relativeDistance)
+			local worldPosition, flatDirection =
+				sampleRouteAtDistance(layout.route, layout.startDistance + relativeDistance)
 			if worldPosition and flatDirection then
 				positionChevron(chevron, worldPosition, flatDirection)
+				setChevronFade(chevron, getChevronFadeAlpha(relativeDistance, renderSpan))
 			else
 				setChevronVisible(chevron, false)
 			end
@@ -1629,10 +1441,7 @@ function TutorialGui.ensureGui()
 	bannerStroke.Parent = promptPill
 
 	local bannerGradient = Instance.new("UIGradient")
-	bannerGradient.Color = ColorSequence.new(
-		Color3.fromRGB(46, 46, 46),
-		Color3.fromRGB(26, 26, 26)
-	)
+	bannerGradient.Color = ColorSequence.new(Color3.fromRGB(46, 46, 46), Color3.fromRGB(26, 26, 26))
 	bannerGradient.Transparency = NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 0.18),
 		NumberSequenceKeypoint.new(1, 0.34),
@@ -1702,7 +1511,8 @@ function TutorialGui.ensureGui()
 	confirmFrame.Visible = false
 	confirmFrame.Parent = promptPill
 
-	local confirmLabel = createOutlinedLabel(confirmFrame, "Skip tutorial?", Enum.Font.DenkOne, Color3.fromRGB(255, 255, 255))
+	local confirmLabel =
+		createOutlinedLabel(confirmFrame, "Skip tutorial?", Enum.Font.DenkOne, Color3.fromRGB(255, 255, 255))
 	confirmLabel.Name = "ConfirmLabel"
 	confirmLabel.Size = UDim2.fromOffset(82, 18)
 	confirmLabel.Position = UDim2.new(0, 0, 0, 0)
@@ -1767,6 +1577,7 @@ function TutorialClient.start()
 	started = true
 
 	TutorialGui.ensureGui()
+	BaseContext.syncFromPlayerAttributes()
 
 	InventoryState.watchToolContainer(player:FindFirstChild("Backpack"))
 	InventoryState.watchToolContainer(player.Character)
@@ -1825,8 +1636,12 @@ function TutorialClient.start()
 	end)
 
 	Remotes.CannonDropEvent.OnClientEvent:Connect(function(phase)
-		if phase == "Prepare" or phase == "Reset" or phase == "Launch" or phase == "Descend" then
-			PathRenderer.beginFlightSuppression()
+		if phase == "Prepare" or phase == "Launch" or phase == "Descend" then
+			PathRenderer.beginFlightSuppression(phase)
+		elseif phase == "Reset" then
+			if refreshDisplay then
+				task.defer(refreshDisplay)
+			end
 		end
 	end)
 
